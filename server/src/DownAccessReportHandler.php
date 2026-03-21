@@ -95,6 +95,7 @@ final class DownAccessReportHandler
         $errorMessage = $this->str($p, 'error_message');
         $verboseLog   = substr($this->str($p, 'verbose_log'), 0, self::MAX_VERBOSE_LOG_BYTES);
         $userComment  = substr($this->str($p, 'user_comment'), 0, self::MAX_COMMENT_BYTES);
+        $email        = substr($this->str($p, 'email'), 0, 200);
 
         $mailer = new PHPMailer(true);
         $mailer->isSMTP();
@@ -109,6 +110,9 @@ final class DownAccessReportHandler
 
         $mailer->setFrom(self::SMTP_FROM, 'DownAccess Error Reporter');
         $mailer->addAddress(self::REPORT_TO);
+        if ($email !== '' && filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            $mailer->addReplyTo($email);
+        }
 
         $mailer->Subject = sprintf(
             '[DownAccess] Erreur — %s — v%s — %s',
@@ -120,11 +124,11 @@ final class DownAccessReportHandler
         $mailer->isHTML(true);
         $mailer->Body    = $this->buildHtmlBody(
             $appVersion, $ytdlpVersion, $os, $timestamp,
-            $url, $site, $formatSpec, $errorMessage, $verboseLog, $userComment
+            $url, $site, $formatSpec, $errorMessage, $verboseLog, $userComment, $email
         );
         $mailer->AltBody = $this->buildTextBody(
             $appVersion, $ytdlpVersion, $os, $timestamp,
-            $url, $site, $formatSpec, $errorMessage, $verboseLog, $userComment
+            $url, $site, $formatSpec, $errorMessage, $verboseLog, $userComment, $email
         );
 
         $mailer->send();
@@ -133,7 +137,7 @@ final class DownAccessReportHandler
     private function buildHtmlBody(
         string $appVersion, string $ytdlpVersion, string $os, string $timestamp,
         string $url, string $site, string $formatSpec, string $errorMessage,
-        string $verboseLog, string $userComment
+        string $verboseLog, string $userComment, string $email = ''
     ): string {
         $h = fn(string $s): string => htmlspecialchars($s, ENT_QUOTES | ENT_HTML5, 'UTF-8');
 
@@ -145,6 +149,7 @@ final class DownAccessReportHandler
             ['URL',                $url],
             ['Site',               $site],
             ['Format',             $formatSpec],
+            ['Email utilisateur',  $email ?: '—'],
         ];
 
         $tableRows = '';
@@ -187,7 +192,7 @@ final class DownAccessReportHandler
     private function buildTextBody(
         string $appVersion, string $ytdlpVersion, string $os, string $timestamp,
         string $url, string $site, string $formatSpec, string $errorMessage,
-        string $verboseLog, string $userComment
+        string $verboseLog, string $userComment, string $email = ''
     ): string {
         $lines = [
             "RAPPORT D'ERREUR DOWNACCESS",
@@ -199,6 +204,7 @@ final class DownAccessReportHandler
             "URL                : $url",
             "Site               : $site",
             "Format             : $formatSpec",
+            "Email utilisateur  : " . ($email ?: '—'),
             '',
             "ERREUR :",
             $errorMessage,

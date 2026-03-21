@@ -48,9 +48,15 @@ class ReportDialog(wx.Dialog):
         lbl_intro.Wrap(520)
         self._sizer.Add(lbl_intro, 0, wx.ALL, 12)
 
+        # Champ email
+        lbl_email = wx.StaticText(self, label="Votre email (optionnel, pour qu'on puisse vous répondre) :")
+        self._sizer.Add(lbl_email, 0, wx.LEFT | wx.RIGHT | wx.TOP, 12)
+        self.txt_email = wx.TextCtrl(self, name="Adresse email")
+        self._sizer.Add(self.txt_email, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 8)
+
         # Champ commentaire
         lbl_comment = wx.StaticText(self, label="Commentaire (optionnel) :")
-        self._sizer.Add(lbl_comment, 0, wx.LEFT | wx.RIGHT, 12)
+        self._sizer.Add(lbl_comment, 0, wx.LEFT | wx.RIGHT | wx.TOP, 12)
 
         self.txt_comment = wx.TextCtrl(
             self,
@@ -86,6 +92,7 @@ class ReportDialog(wx.Dialog):
         """Passe en mode "diagnostic en cours"."""
         self.btn_send.Enable(False)
         self.btn_cancel.Enable(False)
+        self.txt_email.Enable(False)
         self.txt_comment.Enable(False)
         self.lbl_status.SetLabel("Diagnostic en cours…")
         speech.speak("Diagnostic en cours.")
@@ -103,6 +110,9 @@ class ReportDialog(wx.Dialog):
     # ------------------------------------------------------------------
     # Accesseurs
     # ------------------------------------------------------------------
+
+    def get_email(self) -> str:
+        return self.txt_email.GetValue().strip()
 
     def get_comment(self) -> str:
         return self.txt_comment.GetValue().strip()

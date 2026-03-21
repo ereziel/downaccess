@@ -28,6 +28,7 @@ def build_report(
     error_message: str,
     verbose_log: str,
     user_comment: str,
+    email: str = "",
 ) -> dict:
     try:
         ytdlp_ver = importlib.metadata.version("yt-dlp")
@@ -45,6 +46,7 @@ def build_report(
         "error_message": error_message or "",
         "verbose_log":   (verbose_log or "")[:_MAX_VERBOSE],
         "user_comment":  (user_comment or "")[:_MAX_COMMENT],
+        "email":         (email or "")[:200],
     }
 
 

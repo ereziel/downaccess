@@ -141,6 +141,7 @@ class MainWindow(wx.Frame):
             return
 
         comment = report_dlg.get_comment()
+        email   = report_dlg.get_email()
         report_dlg.set_running()
 
         verbose_log_holder = []
@@ -180,6 +181,7 @@ class MainWindow(wx.Frame):
                 error_message=error_message,
                 verbose_log=verbose_log_holder[0] if verbose_log_holder else "",
                 user_comment=comment,
+                email=email,
             )
             error_reporter.send_report(
                 report,
