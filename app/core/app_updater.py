@@ -5,7 +5,15 @@ Flux :
 1. Interroger l'API GitHub pour la dernière release
 2. Comparer avec la version installée
 3. Si nouvelle version : télécharger DownAccess-Setup.exe dans %TEMP%
-4. Lancer l'installeur et fermer l'app
+4. Vérifier que le fichier est complet (taille > 0)
+5. Lancer l'installeur et fermer l'app proprement
+
+Sécurités :
+- Téléchargement dans un fichier .tmp, renommé seulement si complet
+- Vérification taille fichier > 0 avant lancement
+- Timeout réseau strict
+- L'app ne se ferme que si le processus installeur a bien démarré
+- Aucune exception ne peut crasher l'app silencieusement
 """
 import os
 import subprocess
@@ -17,10 +25,15 @@ import json
 
 from app.version import __version__
 
-GITHUB_API = "https://api.github.com/repos/math65/downaccess/releases/latest"
-ASSET_NAME = "DownAccess-Setup.exe"
-_UA = "DownAccess-Updater"
+GITHUB_API  = "https://api.github.com/repos/math65/downaccess/releases/latest"
+ASSET_NAME  = "DownAccess-Setup.exe"
+DOWNLOAD_URL = f"https://github.com/math65/downaccess/releases/latest/download/{ASSET_NAME}"
+_UA = f"DownAccess/{__version__} (Windows; updater)"
 
+
+# ---------------------------------------------------------------------------
+# Comparaison de versions
+# ---------------------------------------------------------------------------
 
 def _parse_version(tag: str) -> tuple[int, ...]:
     """'v0.2.1' ou '0.2.1' → (0, 2, 1)"""
@@ -31,10 +44,14 @@ def _parse_version(tag: str) -> tuple[int, ...]:
         return (0,)
 
 
+# ---------------------------------------------------------------------------
+# Vérification
+# ---------------------------------------------------------------------------
+
 def check_for_update(on_done) -> None:
     """
-    Lance la vérification en arrière-plan.
-    on_done(status, info) appelé dans le thread secondaire — utiliser wx.CallAfter.
+    Vérifie en arrière-plan si une nouvelle version est disponible.
+    on_done(status, info) est appelé dans le thread — utiliser wx.CallAfter côté UI.
       status : "up_to_date" | "update_available" | "error"
       info   : nouvelle version (str) ou message d'erreur
     """
@@ -46,10 +63,21 @@ def check_for_update(on_done) -> None:
             with urllib.request.urlopen(req, timeout=8) as resp:
                 data = json.loads(resp.read())
 
-            tag      = data.get("tag_name", "")
-            new_ver  = tag.lstrip("v").strip()
+            # Vérifier que la release n'est pas un draft ou pre-release
+            if data.get("draft") or data.get("prerelease"):
+                on_done("up_to_date", __version__)
+                return
+
+            tag     = data.get("tag_name", "")
+            new_ver = tag.lstrip("v").strip()
             if not new_ver:
                 on_done("error", "Réponse GitHub invalide.")
+                return
+
+            # Vérifier que l'asset existe bien dans cette release
+            assets = [a["name"] for a in data.get("assets", [])]
+            if ASSET_NAME not in assets:
+                on_done("error", f"Asset '{ASSET_NAME}' absent de la release {new_ver}.")
                 return
 
             if _parse_version(new_ver) > _parse_version(__version__):
@@ -65,44 +93,97 @@ def check_for_update(on_done) -> None:
     threading.Thread(target=_run, daemon=True).start()
 
 
+# ---------------------------------------------------------------------------
+# Téléchargement et installation
+# ---------------------------------------------------------------------------
+
 def download_and_install(new_version: str, on_progress, on_error) -> None:
     """
-    Télécharge DownAccess-Setup.exe depuis la release GitHub,
-    le lance puis ferme l'app.
+    Télécharge l'installeur et le lance.
 
-    on_progress(percent: float)  — appelé dans le thread secondaire
-    on_error(message: str)       — appelé dans le thread secondaire
+    on_progress(percent: float)  — progression 0-100
+    on_error(message: str)       — appelé si échec ; l'app NE se ferme PAS
     """
     def _run():
-        dest = os.path.join(tempfile.gettempdir(), ASSET_NAME)
-        # URL directe de l'asset (même nom à chaque release)
-        asset_url = (
-            f"https://github.com/math65/downaccess/releases/latest/download/{ASSET_NAME}"
-        )
+        tmp_path  = os.path.join(tempfile.gettempdir(), ASSET_NAME + ".tmp")
+        dest_path = os.path.join(tempfile.gettempdir(), ASSET_NAME)
+
+        # Nettoyer un éventuel résidu de téléchargement précédent
+        for path in (tmp_path, dest_path):
+            try:
+                if os.path.exists(path):
+                    os.remove(path)
+            except OSError:
+                pass
+
         try:
-            req = urllib.request.Request(asset_url)
+            req = urllib.request.Request(DOWNLOAD_URL)
             req.add_header("User-Agent", _UA)
-            with urllib.request.urlopen(req, timeout=30) as resp:
-                total = int(resp.headers.get("Content-Length", 0))
+            with urllib.request.urlopen(req, timeout=60) as resp:
+                total      = int(resp.headers.get("Content-Length", 0))
                 downloaded = 0
-                chunk = 65536  # 64 Ko
-                with open(dest, "wb") as f:
+                chunk_size = 65536  # 64 Ko
+                with open(tmp_path, "wb") as f:
                     while True:
-                        buf = resp.read(chunk)
+                        buf = resp.read(chunk_size)
                         if not buf:
                             break
                         f.write(buf)
                         downloaded += len(buf)
-                        if total:
+                        if total > 0:
                             on_progress(downloaded / total * 100)
 
-            # Lancer l'installeur
-            subprocess.Popen([dest], shell=True)
-            # Quitter l'app pour que l'installeur puisse remplacer les fichiers
-            import wx
-            wx.CallAfter(wx.GetApp().ExitMainLoop)
-
         except Exception as exc:
-            on_error(str(exc))
+            # Supprimer le fichier partiel
+            try:
+                os.remove(tmp_path)
+            except OSError:
+                pass
+            on_error(f"Téléchargement échoué : {exc}")
+            return
+
+        # Vérifier que le fichier n'est pas vide
+        size = os.path.getsize(tmp_path)
+        if size < 65536:  # Un installeur fait au minimum 64 Ko
+            try:
+                os.remove(tmp_path)
+            except OSError:
+                pass
+            on_error(f"Fichier téléchargé trop petit ({size} octets) — corrompu ?")
+            return
+
+        # Renommer seulement si le téléchargement est complet
+        try:
+            os.rename(tmp_path, dest_path)
+        except OSError as exc:
+            on_error(f"Impossible de finaliser le fichier : {exc}")
+            return
+
+        # Lancer l'installeur
+        try:
+            proc = subprocess.Popen([dest_path])
+        except Exception as exc:
+            on_error(f"Impossible de lancer l'installeur : {exc}")
+            return
+
+        # Vérifier que le processus a bien démarré
+        if proc.poll() is not None:
+            on_error("L'installeur s'est terminé immédiatement — fichier corrompu ?")
+            return
+
+        # Tout est bon → fermer l'app proprement
+        import wx
+        wx.CallAfter(_quit_app)
 
     threading.Thread(target=_run, daemon=True).start()
+
+
+def _quit_app() -> None:
+    """Ferme l'app proprement depuis le thread UI."""
+    app = wx.GetApp()
+    if app:
+        top = app.GetTopWindow()
+        if top:
+            top.Close()
+        else:
+            app.ExitMainLoop()
