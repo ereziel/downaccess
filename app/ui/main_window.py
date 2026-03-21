@@ -20,6 +20,7 @@ from app.ui.search_dialog import SearchDialog, SearchResultsDialog
 from app.ui.settings_dialog import SettingsDialog
 from app.ui.uge_dialog import UGEDialog
 from app.ui.update_dialog import UpdateDialog
+from app.ui.contact_dialog import ContactDialog
 from app.ui.error_dialog import ErrorDialog
 from app.ui.report_dialog import ReportDialog
 from app.core import error_reporter
@@ -40,6 +41,7 @@ ID_UPDATE_YDL   = wx.NewIdRef()
 ID_CLIP_TOGGLE  = wx.NewIdRef()
 ID_SEARCH       = wx.NewIdRef()
 ID_UPDATE_APP   = wx.NewIdRef()
+ID_CONTACT      = wx.NewIdRef()
 
 
 class MainWindow(wx.Frame):
@@ -320,6 +322,10 @@ class MainWindow(wx.Frame):
             ID_UPDATE_APP, "Mettre à jour &DownAccess",
             "Vérifier et installer la dernière version de DownAccess",
         )
+        self.mi_contact = help_menu.Append(
+            ID_CONTACT, "&Contacter le support / Faire une suggestion",
+            "Envoyer un message, une suggestion ou signaler un problème",
+        )
         help_menu.AppendSeparator()
         self.mi_about = help_menu.Append(
             wx.ID_ABOUT, "À &propos de DownAccess",
@@ -372,6 +378,7 @@ class MainWindow(wx.Frame):
         self.Bind(wx.EVT_MENU, self._on_shortcuts,      id=ID_SHORTCUTS)
         self.Bind(wx.EVT_MENU, self._on_update_ytdlp,   id=ID_UPDATE_YDL)
         self.Bind(wx.EVT_MENU, self._on_update_app,     id=ID_UPDATE_APP)
+        self.Bind(wx.EVT_MENU, self._on_contact,        id=ID_CONTACT)
         self.Bind(wx.EVT_MENU, self._on_about,          id=wx.ID_ABOUT)
         self.Bind(wx.EVT_CLOSE, self._on_close)
         # Ctrl+V global sur la fenêtre principale → coller URL directement
@@ -770,6 +777,32 @@ class MainWindow(wx.Frame):
 
         updater.check_and_update(
             on_done=lambda status, info: wx.CallAfter(self.on_ytdlp_update_done, status, info)
+        )
+
+    def _on_contact(self, _event) -> None:
+        dlg = ContactDialog(self)
+        if dlg.ShowModal() != wx.ID_OK:
+            dlg.Destroy()
+            return
+
+        contact_type = dlg.get_type_key()
+        email        = dlg.get_email()
+        message      = dlg.get_message()
+
+        dlg.set_sending()
+
+        def _on_done(success: bool, msg: str) -> None:
+            wx.CallAfter(dlg.set_done, success, msg)
+            if success:
+                wx.CallAfter(self.set_status, "Message envoyé.")
+            else:
+                wx.CallAfter(self.set_status, "Échec de l'envoi du message.")
+
+        error_reporter.send_contact(
+            contact_type=contact_type,
+            email=email,
+            message=message,
+            on_done=_on_done,
         )
 
     def _on_about(self, _event) -> None:

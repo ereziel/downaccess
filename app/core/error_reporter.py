@@ -13,8 +13,9 @@ from typing import Callable
 
 from app.version import __version__
 
-REPORT_URL = "https://mathieumartin.ovh/api/downaccess-report"
-_BEARER    = "a5b84358b988e5e1fecbf2bc28191bb279db2769bf95c2b0df74b4246dabd93e"
+REPORT_URL  = "https://mathieumartin.ovh/api/downaccess-report"
+CONTACT_URL = "https://mathieumartin.ovh/api/downaccess-contact"
+_BEARER     = "a5b84358b988e5e1fecbf2bc28191bb279db2769bf95c2b0df74b4246dabd93e"
 
 _MAX_VERBOSE  = 100_000   # caractères
 _MAX_COMMENT  =   2_000
@@ -65,6 +66,47 @@ def send_report(report: dict, on_done: Callable[[bool, str], None]) -> None:
             else:
                 on_done(False, body.get("message", "Erreur inconnue."))
 
+        except urllib.error.HTTPError as exc:
+            try:
+                body = json.loads(exc.read())
+                on_done(False, body.get("message", f"Erreur HTTP {exc.code}."))
+            except Exception:
+                on_done(False, f"Erreur HTTP {exc.code}.")
+        except Exception as exc:
+            on_done(False, str(exc))
+
+    threading.Thread(target=_run, daemon=True).start()
+
+
+def send_contact(
+    contact_type: str,
+    email: str,
+    message: str,
+    on_done: Callable[[bool, str], None],
+) -> None:
+    """
+    Envoie un message de contact/suggestion en arrière-plan.
+    on_done(success, message) est appelé dans le thread — utiliser wx.CallAfter côté UI.
+    """
+    payload = {
+        "app_version": __version__,
+        "contact_type": contact_type,
+        "email": email,
+        "message": message[:2000],
+    }
+
+    def _run() -> None:
+        try:
+            data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+            req  = urllib.request.Request(CONTACT_URL, data=data, method="POST")
+            req.add_header("Content-Type", "application/json; charset=utf-8")
+            req.add_header("Authorization", f"Bearer {_BEARER}")
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                body = json.loads(resp.read())
+            if body.get("ok"):
+                on_done(True, "Message envoyé. Merci pour votre retour !")
+            else:
+                on_done(False, body.get("message", "Erreur inconnue."))
         except urllib.error.HTTPError as exc:
             try:
                 body = json.loads(exc.read())
