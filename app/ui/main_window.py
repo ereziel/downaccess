@@ -8,6 +8,8 @@ _URL_RE = re.compile(r'https?://[^\s"\'<>]+', re.IGNORECASE)
 from app.core import settings as cfg
 from app.core import speech
 from app.core import updater
+from app.core import app_updater
+from app.version import __version__
 from app.core.downloader import DownloadInfo, DownloadProgress
 from app.core.queue_manager import QueueManager
 from app.ui.add_url_dialog import AddUrlDialog, FORMAT_MANUAL
@@ -32,6 +34,7 @@ ID_SHORTCUTS    = wx.NewIdRef()
 ID_UPDATE_YDL   = wx.NewIdRef()
 ID_CLIP_TOGGLE  = wx.NewIdRef()
 ID_SEARCH       = wx.NewIdRef()
+ID_UPDATE_APP   = wx.NewIdRef()
 
 
 class MainWindow(wx.Frame):
@@ -237,6 +240,10 @@ class MainWindow(wx.Frame):
             ID_UPDATE_YDL, "Mettre à jour &yt-dlp",
             "Télécharger et installer la dernière version de yt-dlp",
         )
+        self.mi_update_app = help_menu.Append(
+            ID_UPDATE_APP, "Mettre à jour &DownAccess",
+            "Vérifier et installer la dernière version de DownAccess",
+        )
         help_menu.AppendSeparator()
         self.mi_about = help_menu.Append(
             wx.ID_ABOUT, "À &propos de DownAccess",
@@ -288,6 +295,7 @@ class MainWindow(wx.Frame):
         self.Bind(wx.EVT_MENU, self._on_clip_toggle,    id=ID_CLIP_TOGGLE)
         self.Bind(wx.EVT_MENU, self._on_shortcuts,      id=ID_SHORTCUTS)
         self.Bind(wx.EVT_MENU, self._on_update_ytdlp,   id=ID_UPDATE_YDL)
+        self.Bind(wx.EVT_MENU, self._on_update_app,     id=ID_UPDATE_APP)
         self.Bind(wx.EVT_MENU, self._on_about,          id=wx.ID_ABOUT)
         self.Bind(wx.EVT_CLOSE, self._on_close)
         # Ctrl+V global sur la fenêtre principale → coller URL directement
@@ -620,6 +628,57 @@ class MainWindow(wx.Frame):
             "Alt+F4           Quitter\n"
         )
         wx.MessageBox(msg, "Raccourcis clavier", wx.OK | wx.ICON_INFORMATION)
+
+    def _on_update_app(self, _event) -> None:
+        self.mi_update_app.Enable(False)
+        self.set_status("Vérification de la mise à jour DownAccess…")
+        speech.speak("Vérification de la mise à jour.")
+        app_updater.check_for_update(
+            on_done=lambda status, info: wx.CallAfter(self._on_app_update_checked, status, info)
+        )
+
+    def _on_app_update_checked(self, status: str, info: str) -> None:
+        self.mi_update_app.Enable(True)
+        if status == "up_to_date":
+            msg = f"DownAccess est à jour. Version {info}."
+            self.set_status(msg)
+            speech.speak(msg)
+        elif status == "update_available":
+            speech.speak(f"Nouvelle version disponible : {info}. Téléchargement en cours…")
+            self.set_status(f"Téléchargement de DownAccess {info}…")
+            self.mi_update_app.Enable(False)
+            app_updater.download_and_install(
+                new_version=info,
+                on_progress=lambda pct: wx.CallAfter(self._on_app_dl_progress, pct),
+                on_error=lambda msg: wx.CallAfter(self._on_app_dl_error, msg),
+            )
+        elif status == "error":
+            msg = "Impossible de vérifier la mise à jour."
+            self.set_status(msg)
+            speech.speak(msg)
+
+    def _on_app_dl_progress(self, percent: float) -> None:
+        self.set_status(f"Téléchargement de la mise à jour… {percent:.0f} %")
+        for milestone in (25, 50, 75, 100):
+            if abs(percent - milestone) < 2:
+                speech.speak(f"{milestone} pourcent.", interrupt=False)
+                break
+
+    def _on_app_dl_error(self, message: str) -> None:
+        self.mi_update_app.Enable(True)
+        self.set_status("Erreur lors du téléchargement de la mise à jour.")
+        speech.speak("Erreur lors du téléchargement.")
+        wx.MessageBox(
+            f"Impossible de télécharger la mise à jour :\n\n{message}",
+            "Erreur de mise à jour", wx.OK | wx.ICON_ERROR,
+        )
+
+    def check_app_update_at_startup(self) -> None:
+        """Vérification silencieuse au démarrage — annonce seulement si mise à jour dispo."""
+        def _on_done(status, info):
+            if status == "update_available":
+                wx.CallAfter(self._on_app_update_checked, status, info)
+        app_updater.check_for_update(on_done=_on_done)
 
     def _on_update_ytdlp(self, _event) -> None:
         self.set_status("Vérification de la version yt-dlp…")

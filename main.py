@@ -13,6 +13,7 @@ def main():
             frame.on_ytdlp_update_done, status, info
         )
     )
+    frame.check_app_update_at_startup()
 
     app.MainLoop()
 
