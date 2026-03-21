@@ -20,6 +20,10 @@ from app.ui.search_dialog import SearchDialog, SearchResultsDialog
 from app.ui.settings_dialog import SettingsDialog
 from app.ui.uge_dialog import UGEDialog
 from app.ui.update_dialog import UpdateDialog
+from app.ui.error_dialog import ErrorDialog
+from app.ui.report_dialog import ReportDialog
+from app.core import error_reporter
+from app.core.downloader import Downloader
 
 APP_NAME = "DownAccess"
 
@@ -85,6 +89,8 @@ class MainWindow(wx.Frame):
 
     def _on_dl_info(self, info: DownloadInfo) -> None:
         self.download_list.update_info(info.download_id, info.title, info.site, info.fmt)
+        if info.download_id in self._dl_data:
+            self._dl_data[info.download_id]["site"] = info.site
         title = info.title or info.url
         speech.speak(f"Téléchargement démarré : {title}.", interrupt=False)
 
@@ -112,11 +118,80 @@ class MainWindow(wx.Frame):
         self.download_list.error_item(download_id)
         self.set_status("Erreur lors du téléchargement.")
         speech.speak("Erreur lors du téléchargement.")
-        wx.MessageBox(
-            f"Erreur de téléchargement :\n\n{message}",
-            "Erreur",
-            wx.OK | wx.ICON_ERROR,
-        )
+        dlg = ErrorDialog(self, message)
+        dlg.ShowModal()
+        if dlg.wants_report():
+            self._start_error_report(download_id, message)
+        dlg.Destroy()
+
+    def _start_error_report(self, download_id: str, error_message: str) -> None:
+        dl_data = self._dl_data.get(download_id, {})
+        url         = dl_data.get("url", "")
+        site        = dl_data.get("site", "")
+        format_spec = dl_data.get("format_spec", "auto")
+        format_id   = dl_data.get("format_id")
+        referer     = dl_data.get("referer")
+        cookies     = dl_data.get("cookies")
+
+        report_dlg = ReportDialog(self, url=url, site=site, error_message=error_message)
+        if report_dlg.ShowModal() != wx.ID_OK:
+            report_dlg.Destroy()
+            return
+
+        comment = report_dlg.get_comment()
+        report_dlg.set_running()
+
+        verbose_log_holder = []
+
+        import threading
+        import threading as _th
+        stop_evt  = _th.Event()
+        pause_evt = _th.Event()
+
+        def _run_verbose():
+            log = []
+            try:
+                downloader = Downloader(self.settings)
+                downloader.download(
+                    download_id="diagnostic",
+                    url=url,
+                    on_progress=lambda _p: None,
+                    stop_event=stop_evt,
+                    pause_event=pause_evt,
+                    format_spec=format_spec,
+                    format_id=format_id,
+                    referer=referer,
+                    cookies=cookies,
+                    verbose=True,
+                    on_verbose_log=lambda txt: log.append(txt),
+                )
+            except Exception:
+                pass
+            verbose_log_holder.append(log[0] if log else "")
+            wx.CallAfter(_send_report)
+
+        def _send_report():
+            report = error_reporter.build_report(
+                url=url,
+                site=site,
+                format_spec=format_spec,
+                error_message=error_message,
+                verbose_log=verbose_log_holder[0] if verbose_log_holder else "",
+                user_comment=comment,
+            )
+            error_reporter.send_report(
+                report,
+                on_done=lambda ok, msg: wx.CallAfter(_on_sent, ok, msg),
+            )
+
+        def _on_sent(success: bool, msg: str):
+            report_dlg.set_done(success, msg)
+            if success:
+                self.set_status("Rapport d'erreur envoyé.")
+            else:
+                self.set_status("Échec de l'envoi du rapport.")
+
+        threading.Thread(target=_run_verbose, daemon=True).start()
 
     def _on_dl_playlist(self, info: DownloadInfo) -> None:
         """Playlist détectée — supprimer l'item placeholder et montrer le dialogue."""
@@ -417,8 +492,11 @@ class MainWindow(wx.Frame):
                                 referer=referer, cookies=cookies)
         label = format_spec.upper() if format_spec != "auto" else "Auto"
         self.download_list.add_item(dl_id, url, site="—", fmt=label)
-        # Stocker pour retry
-        self._dl_data[dl_id] = {"url": url, "format_spec": format_spec, "format_id": format_id}
+        # Stocker pour retry et rapport d'erreur
+        self._dl_data[dl_id] = {
+            "url": url, "format_spec": format_spec, "format_id": format_id,
+            "referer": referer, "cookies": cookies, "site": "",
+        }
         self._dl_data["__last_fmt__"] = format_spec
         self.set_count(self.download_list.count())
         self.set_status(f"URL ajoutée : {url}")

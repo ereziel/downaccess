@@ -1,3 +1,4 @@
+import io
 import time
 import threading
 from dataclasses import dataclass, field
@@ -120,11 +121,15 @@ class Downloader:
         format_id: str | None = None,
         referer: str | None = None,
         cookies: str | None = None,
+        verbose: bool = False,
+        on_verbose_log: Callable[[str], None] | None = None,
     ) -> None:
         """
         Télécharge l'URL dans le dossier configuré.
-        format_spec : "auto" | "mp4" | "mp3" | "m4a" | "manual"
-        format_id   : format_id yt-dlp spécifique (mode manuel uniquement)
+        format_spec    : "auto" | "mp4" | "mp3" | "m4a" | "manual"
+        format_id      : format_id yt-dlp spécifique (mode manuel uniquement)
+        verbose        : active les logs yt-dlp détaillés (mode diagnostic)
+        on_verbose_log : appelé avec le log complet en fin de téléchargement
         """
         dest = self._settings.get("download_folder", ".")
 
@@ -133,12 +138,18 @@ class Downloader:
         else:
             outtmpl = f"{dest}/%(title)s.%(ext)s"
 
+        log_buf = io.StringIO() if verbose else None
+
         opts = {
             "outtmpl":        outtmpl,
-            "quiet":          True,
-            "no_warnings":    True,
+            "quiet":          not verbose,
+            "no_warnings":    not verbose,
+            "verbose":        verbose,
             "progress_hooks": [self._make_hook(download_id, on_progress, stop_event, pause_event)],
         }
+
+        if verbose and log_buf is not None:
+            opts["logger"] = _StringLogger(log_buf)
 
         if self._settings.get("proxy_http"):
             opts["proxy"] = self._settings["proxy_http"]
@@ -169,9 +180,16 @@ class Downloader:
             with yt_dlp.YoutubeDL(opts) as ydl:
                 ydl.download([url])
         except yt_dlp.utils.DownloadError as exc:
+            if log_buf is not None and on_verbose_log is not None:
+                on_verbose_log(log_buf.getvalue())
             raise DownloadError(str(exc)) from exc
         except Exception as exc:
+            if log_buf is not None and on_verbose_log is not None:
+                on_verbose_log(log_buf.getvalue())
             raise DownloadError(str(exc)) from exc
+
+        if log_buf is not None and on_verbose_log is not None:
+            on_verbose_log(log_buf.getvalue())
 
     # ------------------------------------------------------------------
     # Hook de progression
@@ -279,3 +297,22 @@ def _apply_subtitles(opts: dict, settings: dict) -> None:
 
 class DownloadError(Exception):
     pass
+
+
+class _StringLogger:
+    """Logger yt-dlp qui capture toute la sortie dans un StringIO."""
+
+    def __init__(self, buf: io.StringIO) -> None:
+        self._buf = buf
+
+    def debug(self, msg: str) -> None:
+        self._buf.write(msg + "\n")
+
+    def info(self, msg: str) -> None:
+        self._buf.write(msg + "\n")
+
+    def warning(self, msg: str) -> None:
+        self._buf.write(f"WARNING: {msg}\n")
+
+    def error(self, msg: str) -> None:
+        self._buf.write(f"ERROR: {msg}\n")
