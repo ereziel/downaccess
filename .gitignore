@@ -1,0 +1,48 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+*.spec
+
+# Environnement virtuel
+venv/
+.venv/
+env/
+
+# yt-dlp (installé dans AppData, pas versionné)
+# Les binaires téléchargés localement
+*.exe
+*.dll
+
+# Fichiers téléchargés par l'app
+*.mp4
+*.mp3
+*.m4a
+*.webm
+*.mkv
+*.ogg
+*.wav
+*.flac
+*.aac
+*.ts
+
+# Paramètres utilisateur (sensibles)
+# settings.json est dans %APPDATA%\DownAccess, pas dans le projet
+
+# IDE
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log
