@@ -17,6 +17,7 @@ DEFAULTS: dict = {
     "organize_by_site": False,
     "clipboard_monitor": False,
     "ytdlp_extra_opts": [],
+    "user_email": "",
 }
 
 

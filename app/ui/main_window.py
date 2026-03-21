@@ -135,67 +135,70 @@ class MainWindow(wx.Frame):
         referer     = dl_data.get("referer")
         cookies     = dl_data.get("cookies")
 
-        report_dlg = ReportDialog(self, url=url, site=site, error_message=error_message)
-        if report_dlg.ShowModal() != wx.ID_OK:
-            report_dlg.Destroy()
-            return
-
-        comment = report_dlg.get_comment()
-        email   = report_dlg.get_email()
-        report_dlg.set_running()
-
-        verbose_log_holder = []
-
-        import threading
         import threading as _th
-        stop_evt  = _th.Event()
-        pause_evt = _th.Event()
 
-        def _run_verbose():
-            log = []
-            try:
-                downloader = Downloader(self.settings)
-                downloader.download(
-                    download_id="diagnostic",
+        def _on_confirmed(comment: str, email: str) -> None:
+            if email:
+                self.settings["user_email"] = email
+                from app.core import settings as cfg
+                cfg.save(self.settings)
+            verbose_log_holder = []
+            stop_evt  = _th.Event()
+            pause_evt = _th.Event()
+
+            def _run_verbose():
+                log = []
+                try:
+                    downloader = Downloader(self.settings)
+                    downloader.download(
+                        download_id="diagnostic",
+                        url=url,
+                        on_progress=lambda _p: None,
+                        stop_event=stop_evt,
+                        pause_event=pause_evt,
+                        format_spec=format_spec,
+                        format_id=format_id,
+                        referer=referer,
+                        cookies=cookies,
+                        verbose=True,
+                        on_verbose_log=lambda txt: log.append(txt),
+                    )
+                except Exception:
+                    pass
+                verbose_log_holder.append(log[0] if log else "")
+                wx.CallAfter(_send_report)
+
+            def _send_report():
+                report = error_reporter.build_report(
                     url=url,
-                    on_progress=lambda _p: None,
-                    stop_event=stop_evt,
-                    pause_event=pause_evt,
+                    site=site,
                     format_spec=format_spec,
-                    format_id=format_id,
-                    referer=referer,
-                    cookies=cookies,
-                    verbose=True,
-                    on_verbose_log=lambda txt: log.append(txt),
+                    error_message=error_message,
+                    verbose_log=verbose_log_holder[0] if verbose_log_holder else "",
+                    user_comment=comment,
+                    email=email,
                 )
-            except Exception:
-                pass
-            verbose_log_holder.append(log[0] if log else "")
-            wx.CallAfter(_send_report)
+                error_reporter.send_report(
+                    report,
+                    on_done=lambda ok, msg: wx.CallAfter(_on_sent, ok, msg),
+                )
 
-        def _send_report():
-            report = error_reporter.build_report(
-                url=url,
-                site=site,
-                format_spec=format_spec,
-                error_message=error_message,
-                verbose_log=verbose_log_holder[0] if verbose_log_holder else "",
-                user_comment=comment,
-                email=email,
-            )
-            error_reporter.send_report(
-                report,
-                on_done=lambda ok, msg: wx.CallAfter(_on_sent, ok, msg),
-            )
+            def _on_sent(success: bool, msg: str):
+                report_dlg.set_done(success, msg)
+                if success:
+                    self.set_status("Rapport d'erreur envoyé.")
+                else:
+                    self.set_status("Échec de l'envoi du rapport.")
 
-        def _on_sent(success: bool, msg: str):
-            report_dlg.set_done(success, msg)
-            if success:
-                self.set_status("Rapport d'erreur envoyé.")
-            else:
-                self.set_status("Échec de l'envoi du rapport.")
+            _th.Thread(target=_run_verbose, daemon=True).start()
 
-        threading.Thread(target=_run_verbose, daemon=True).start()
+        report_dlg = ReportDialog(
+            self, url=url, site=site, error_message=error_message,
+            on_confirmed=_on_confirmed,
+            saved_email=self.settings.get("user_email", ""),
+        )
+        report_dlg.ShowModal()
+        report_dlg.Destroy()
 
     def _on_dl_playlist(self, info: DownloadInfo) -> None:
         """Playlist détectée — supprimer l'item placeholder et montrer le dialogue."""
@@ -782,30 +785,18 @@ class MainWindow(wx.Frame):
         )
 
     def _on_contact(self, _event) -> None:
-        dlg = ContactDialog(self)
-        if dlg.ShowModal() != wx.ID_OK:
-            dlg.Destroy()
-            return
+        def _save_email(email: str) -> None:
+            self.settings["user_email"] = email
+            from app.core import settings as cfg
+            cfg.save(self.settings)
 
-        contact_type = dlg.get_type_key()
-        email        = dlg.get_email()
-        message      = dlg.get_message()
-
-        dlg.set_sending()
-
-        def _on_done(success: bool, msg: str) -> None:
-            wx.CallAfter(dlg.set_done, success, msg)
-            if success:
-                wx.CallAfter(self.set_status, "Message envoyé.")
-            else:
-                wx.CallAfter(self.set_status, "Échec de l'envoi du message.")
-
-        error_reporter.send_contact(
-            contact_type=contact_type,
-            email=email,
-            message=message,
-            on_done=_on_done,
+        dlg = ContactDialog(
+            self,
+            saved_email=self.settings.get("user_email", ""),
+            on_email_saved=_save_email,
         )
+        dlg.ShowModal()
+        dlg.Destroy()
 
     def _on_about(self, _event) -> None:
         wx.MessageBox(

@@ -14,7 +14,8 @@ class ReportDialog(wx.Dialog):
     Étape 3 : affiche le résultat (succès ou erreur).
     """
 
-    def __init__(self, parent, url: str, site: str, error_message: str):
+    def __init__(self, parent, url: str, site: str, error_message: str,
+                 on_confirmed=None, saved_email: str = ""):
         super().__init__(
             parent,
             title="Envoyer un rapport d'erreur",
@@ -24,7 +25,8 @@ class ReportDialog(wx.Dialog):
         self._url           = url
         self._site          = site
         self._error_message = error_message
-        self._comment       = ""
+        self._on_confirmed  = on_confirmed  # Callable[[str, str], None] | None
+        self._saved_email   = saved_email
         self._build_ui()
         self.txt_comment.SetFocus()
         self.Centre()
@@ -51,7 +53,7 @@ class ReportDialog(wx.Dialog):
         # Champ email
         lbl_email = wx.StaticText(self, label="Votre email (optionnel, pour qu'on puisse vous répondre) :")
         self._sizer.Add(lbl_email, 0, wx.LEFT | wx.RIGHT | wx.TOP, 12)
-        self.txt_email = wx.TextCtrl(self, name="Adresse email")
+        self.txt_email = wx.TextCtrl(self, name="Adresse email", value=self._saved_email)
         self._sizer.Add(self.txt_email, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 8)
 
         # Champ commentaire
@@ -80,7 +82,8 @@ class ReportDialog(wx.Dialog):
         btn_sizer.Add(self.btn_cancel, 0, wx.RIGHT, 8)
         self._sizer.Add(btn_sizer, 0, wx.EXPAND | wx.BOTTOM, 10)
 
-        self.btn_send.Bind(wx.EVT_BUTTON, self._on_send)
+        self.btn_send.Bind(wx.EVT_BUTTON,   self._on_send)
+        self.btn_cancel.Bind(wx.EVT_BUTTON, lambda _e: self.EndModal(wx.ID_CANCEL))
 
         self.SetSizer(self._sizer)
 
@@ -122,5 +125,9 @@ class ReportDialog(wx.Dialog):
     # ------------------------------------------------------------------
 
     def _on_send(self, _event) -> None:
-        self._comment = self.get_comment()
-        self.EndModal(wx.ID_OK)
+        """Lance le diagnostic : désactive l'UI et appelle le callback."""
+        comment = self.get_comment()
+        email   = self.get_email()
+        self.set_running()
+        if self._on_confirmed:
+            self._on_confirmed(comment, email)
