@@ -46,3 +46,8 @@ desktop.ini
 
 # Logs
 *.log
+
+# Fichiers internes Claude / planning
+CLAUDE.md
+context.md
+plan.md
