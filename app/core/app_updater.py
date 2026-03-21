@@ -51,9 +51,10 @@ def _parse_version(tag: str) -> tuple[int, ...]:
 def check_for_update(on_done) -> None:
     """
     Vérifie en arrière-plan si une nouvelle version est disponible.
-    on_done(status, info) est appelé dans le thread — utiliser wx.CallAfter côté UI.
-      status : "up_to_date" | "update_available" | "error"
-      info   : nouvelle version (str) ou message d'erreur
+    on_done(status, info, release_notes) est appelé dans le thread — utiliser wx.CallAfter côté UI.
+      status        : "up_to_date" | "update_available" | "error"
+      info          : nouvelle version (str) ou message d'erreur
+      release_notes : notes de version (str) ou ""
     """
     def _run():
         try:
@@ -65,30 +66,32 @@ def check_for_update(on_done) -> None:
 
             # Vérifier que la release n'est pas un draft ou pre-release
             if data.get("draft") or data.get("prerelease"):
-                on_done("up_to_date", __version__)
+                on_done("up_to_date", __version__, "")
                 return
 
             tag     = data.get("tag_name", "")
             new_ver = tag.lstrip("v").strip()
             if not new_ver:
-                on_done("error", "Réponse GitHub invalide.")
+                on_done("error", "Réponse GitHub invalide.", "")
                 return
 
             # Vérifier que l'asset existe bien dans cette release
             assets = [a["name"] for a in data.get("assets", [])]
             if ASSET_NAME not in assets:
-                on_done("error", f"Asset '{ASSET_NAME}' absent de la release {new_ver}.")
+                on_done("error", f"Asset '{ASSET_NAME}' absent de la release {new_ver}.", "")
                 return
 
+            release_notes = data.get("body", "") or ""
+
             if _parse_version(new_ver) > _parse_version(__version__):
-                on_done("update_available", new_ver)
+                on_done("update_available", new_ver, release_notes)
             else:
-                on_done("up_to_date", __version__)
+                on_done("up_to_date", __version__, "")
 
         except urllib.error.URLError:
-            on_done("error", "Impossible de contacter GitHub.")
+            on_done("error", "Impossible de contacter GitHub.", "")
         except Exception as exc:
-            on_done("error", str(exc))
+            on_done("error", str(exc), "")
 
     threading.Thread(target=_run, daemon=True).start()
 
@@ -172,15 +175,16 @@ def download_and_install(new_version: str, on_progress, on_error) -> None:
             return
 
         # Tout est bon → fermer l'app proprement
-        import wx
-        wx.CallAfter(_quit_app)
+        import wx as _wx
+        _wx.CallAfter(_quit_app)
 
     threading.Thread(target=_run, daemon=True).start()
 
 
 def _quit_app() -> None:
     """Ferme l'app proprement depuis le thread UI."""
-    app = wx.GetApp()
+    import wx as _wx
+    app = _wx.GetApp()
     if app:
         top = app.GetTopWindow()
         if top:

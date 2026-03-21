@@ -19,6 +19,7 @@ from app.ui.playlist_dialog import PlaylistDialog
 from app.ui.search_dialog import SearchDialog, SearchResultsDialog
 from app.ui.settings_dialog import SettingsDialog
 from app.ui.uge_dialog import UGEDialog
+from app.ui.update_dialog import UpdateDialog
 
 APP_NAME = "DownAccess"
 
@@ -634,24 +635,28 @@ class MainWindow(wx.Frame):
         self.set_status("Vérification de la mise à jour DownAccess…")
         speech.speak("Vérification de la mise à jour.")
         app_updater.check_for_update(
-            on_done=lambda status, info: wx.CallAfter(self._on_app_update_checked, status, info)
+            on_done=lambda status, info, notes: wx.CallAfter(self._on_app_update_checked, status, info, notes)
         )
 
-    def _on_app_update_checked(self, status: str, info: str) -> None:
+    def _on_app_update_checked(self, status: str, info: str, release_notes: str = "") -> None:
         self.mi_update_app.Enable(True)
         if status == "up_to_date":
             msg = f"DownAccess est à jour. Version {info}."
             self.set_status(msg)
             speech.speak(msg)
         elif status == "update_available":
-            speech.speak(f"Nouvelle version disponible : {info}. Téléchargement en cours…")
-            self.set_status(f"Téléchargement de DownAccess {info}…")
-            self.mi_update_app.Enable(False)
-            app_updater.download_and_install(
-                new_version=info,
-                on_progress=lambda pct: wx.CallAfter(self._on_app_dl_progress, pct),
-                on_error=lambda msg: wx.CallAfter(self._on_app_dl_error, msg),
-            )
+            dlg = UpdateDialog(self, new_version=info, release_notes=release_notes)
+            if dlg.ShowModal() == wx.ID_OK:
+                self.set_status(f"Téléchargement de DownAccess {info}…")
+                self.mi_update_app.Enable(False)
+                app_updater.download_and_install(
+                    new_version=info,
+                    on_progress=lambda pct: wx.CallAfter(self._on_app_dl_progress, pct),
+                    on_error=lambda msg: wx.CallAfter(self._on_app_dl_error, msg),
+                )
+            else:
+                self.set_status(f"Mise à jour DownAccess {info} reportée.")
+            dlg.Destroy()
         elif status == "error":
             msg = "Impossible de vérifier la mise à jour."
             self.set_status(msg)
@@ -675,9 +680,9 @@ class MainWindow(wx.Frame):
 
     def check_app_update_at_startup(self) -> None:
         """Vérification silencieuse au démarrage — annonce seulement si mise à jour dispo."""
-        def _on_done(status, info):
+        def _on_done(status, info, notes):
             if status == "update_available":
-                wx.CallAfter(self._on_app_update_checked, status, info)
+                wx.CallAfter(self._on_app_update_checked, status, info, notes)
         app_updater.check_for_update(on_done=_on_done)
 
     def _on_update_ytdlp(self, _event) -> None:
