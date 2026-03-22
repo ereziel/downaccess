@@ -101,14 +101,18 @@ class SettingsDialog(wx.Dialog):
         self.chk_organize = wx.CheckBox(page,
             label="Organiser dans des sous-dossiers par site",
             name="Organiser dans des sous-dossiers par site")
+        self.chk_organize_playlist = wx.CheckBox(page,
+            label="Organiser dans des sous-dossiers par playlist",
+            name="Organiser dans des sous-dossiers par playlist")
 
         sizer.Add(lbl_folder,        0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 12)
         sizer.Add(row_folder,        0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 6)
         sizer.Add(lbl_concurrent,    0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 12)
         sizer.Add(self.spin_concurrent, 0, wx.LEFT | wx.RIGHT | wx.TOP, 6)
         sizer.Add(lbl_after,         0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 12)
-        sizer.Add(self.chk_open_folder, 0, wx.LEFT | wx.RIGHT | wx.TOP, 6)
-        sizer.Add(self.chk_organize,    0, wx.LEFT | wx.RIGHT | wx.TOP, 6)
+        sizer.Add(self.chk_open_folder,       0, wx.LEFT | wx.RIGHT | wx.TOP, 6)
+        sizer.Add(self.chk_organize,          0, wx.LEFT | wx.RIGHT | wx.TOP, 6)
+        sizer.Add(self.chk_organize_playlist, 0, wx.LEFT | wx.RIGHT | wx.TOP, 4)
 
         page.SetSizer(sizer)
         return page
@@ -240,6 +244,7 @@ class SettingsDialog(wx.Dialog):
         self.spin_concurrent.SetValue(s.get("max_concurrent_downloads", 2))
         self.chk_open_folder.SetValue(s.get("open_folder_when_done", False))
         self.chk_organize.SetValue(s.get("organize_by_site", False))
+        self.chk_organize_playlist.SetValue(s.get("organize_by_playlist", False))
 
         # Formats
         post = s.get("post_processing", "none")
@@ -270,6 +275,7 @@ class SettingsDialog(wx.Dialog):
         s["max_concurrent_downloads"] = self.spin_concurrent.GetValue()
         s["open_folder_when_done"]    = self.chk_open_folder.GetValue()
         s["organize_by_site"]         = self.chk_organize.GetValue()
+        s["organize_by_playlist"]     = self.chk_organize_playlist.GetValue()
 
         # Formats
         s["post_processing"] = POST_CHOICES[self.choice_post.GetSelection()]

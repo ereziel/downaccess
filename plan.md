@@ -93,14 +93,14 @@ dl/
 ### Phase 5 — Fonctionnalités avancées
 
 - `[x]` Support des playlists : détecter, proposer téléchargement sélectif (PlaylistDialog)
-- `[ ]` Pause / reprise d'un téléchargement
-- `[ ]` Annulation d'un téléchargement
-- `[ ]` Réordonner la file (monter/descendre un item)
+- `[x]` Pause / reprise d'un téléchargement (Espace)
+- `[x]` Annulation d'un téléchargement (Suppr)
+- `[x]` Réordonner la file (monter/descendre un item)
 - `[x]` Réessayer un téléchargement échoué (F2)
 - `[x]` Ouvrir le dossier de destination quand tout est terminé (réglage Préférences)
-- `[ ]` Sous-titres : téléchargement automatique selon préférences
-- `[ ]` Sous-titres : conversion en .srt via ffmpeg si nécessaire
-- `[ ]` Organisation automatique : sous-dossier par site ou par playlist
+- `[x]` Sous-titres : téléchargement automatique selon préférences (config globale)
+- `[x]` Sous-titres : conversion en .srt via ffmpeg si nécessaire
+- `[x]` Organisation automatique : sous-dossier par site et/ou par playlist (les deux combinables)
 - `[x]` Ctrl+V dans la fenêtre principale → colle et enqueue directement sans dialogue
 - `[x]` Surveillance du presse-papiers (timer 1,5 s, activable via menu ou Ctrl+Shift+V, persisté dans settings)
 - `[x]` Recherche intégrée : YouTube, SoundCloud, Bilibili (Ctrl+F)
@@ -112,8 +112,8 @@ dl/
 - `[x]` Annonces vocales sur les événements clés via `speech.speak()` (accessible_output2)
 - `[x]` Raccourcis clavier documentés via menu Aide
 - `[x]` Focus initial des dialogues sur le contenu (pas le bouton) pour permettre lecture NVDA
-- `[ ]` Test de lecture NVDA sur chaque état de la ListCtrl (en attente, en cours, terminé, erreur)
-- `[ ]` Contraste des couleurs conforme WCAG AA
+- `[ ]` Test de lecture NVDA sur chaque état de la ListCtrl (en attente, en cours, terminé, erreur) — aucun test formel
+- `[ ]` Contraste des couleurs conforme WCAG AA — utilise couleurs système Windows (non validé)
 
 ### Phase 7 — Distribution
 
@@ -132,10 +132,10 @@ dl/
 ### À venir (backlog)
 
 - `[ ]` Historique des téléchargements (base SQLite ou JSON)
-- `[ ]` Cookies depuis le navigateur (Edge/Chrome) pour contenu premium
-- `[ ]` Téléchargement par lot : coller plusieurs URLs (une par ligne) — déjà partiel via add_url_dialog
-- `[ ]` Sous-titres automatiques
-- `[ ]` Organisation par site/playlist
+- `[ ]` Cookies depuis le navigateur (Edge/Chrome) pour contenu premium — UGE manuel seulement pour l'instant
+- `[x]` Téléchargement par lot : coller plusieurs URLs (une par ligne) — supporté dans AddUrlDialog
+- `[x]` Sous-titres automatiques — via writeautomaticsub yt-dlp
+- `[x]` Organisation par site/playlist
 
 ---
 

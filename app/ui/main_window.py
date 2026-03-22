@@ -81,7 +81,7 @@ class MainWindow(wx.Frame):
         self._gauge_dl_id: str | None = None
         # Mise à jour yt-dlp en cours au démarrage → bloquer les téléchargements
         self._updater_running: bool = True
-        self._pending_downloads: list[tuple[str, str, str | None]] = []
+        self._pending_downloads: list[tuple[str, str, str | None, str | None]] = []
         self._queue = QueueManager(
             settings=self.settings,
             on_info=self._on_dl_info,
@@ -183,6 +183,44 @@ class MainWindow(wx.Frame):
                 wx.CallAfter(_send_report)
 
             def _send_report():
+                import sys
+                import subprocess as _sp
+
+                # Préférences filtrées (sans données sensibles)
+                _SENSITIVE = {"proxy_http", "proxy_socks", "user_agent", "user_email"}
+                prefs = {k: v for k, v in self.settings.items() if k not in _SENSITIVE}
+
+                # État de la file
+                queue_state = self._queue.get_state()
+
+                # Infos système étendues
+                def _ffmpeg_ver() -> str:
+                    try:
+                        r = _sp.run(
+                            [self.settings.get("ffmpeg_path", "ffmpeg"), "-version"],
+                            capture_output=True, text=True, timeout=3,
+                        )
+                        return r.stdout.splitlines()[0] if r.returncode == 0 else "indisponible"
+                    except Exception:
+                        return "indisponible"
+
+                try:
+                    import psutil as _psutil
+                    mem = _psutil.virtual_memory()
+                    ram_available_mb = mem.available // 1_048_576
+                    ram_total_mb     = mem.total     // 1_048_576
+                except Exception:
+                    ram_available_mb = -1
+                    ram_total_mb     = -1
+
+                system_info = {
+                    "python":          sys.version,
+                    "wxpython":        wx.version(),
+                    "ffmpeg":          _ffmpeg_ver(),
+                    "ram_available_mb": ram_available_mb,
+                    "ram_total_mb":     ram_total_mb,
+                }
+
                 report = error_reporter.build_report(
                     url=url,
                     site=site,
@@ -191,6 +229,9 @@ class MainWindow(wx.Frame):
                     verbose_log=verbose_log_holder[0] if verbose_log_holder else "",
                     user_comment=comment,
                     email=email,
+                    preferences=prefs,
+                    queue_state=queue_state,
+                    system_info=system_info,
                 )
                 error_reporter.send_report(
                     report,
@@ -232,7 +273,7 @@ class MainWindow(wx.Frame):
         for entry in selected:
             url = entry.get("url") or entry.get("webpage_url") or entry.get("id")
             if url:
-                self._enqueue_url(url, fmt_choice)
+                self._enqueue_url(url, fmt_choice, playlist_title=info.title)
 
         speech.speak(f"{len(selected)} vidéos ajoutées à la file.")
 
@@ -552,21 +593,23 @@ class MainWindow(wx.Frame):
     def _enqueue_url(self, url: str, format_spec: str = "auto",
                      format_id: str | None = None,
                      referer: str | None = None,
-                     cookies: str | None = None) -> None:
+                     cookies: str | None = None,
+                     playlist_title: str | None = None) -> None:
         # Si la mise à jour yt-dlp est en cours, mettre en attente
         if self._updater_running:
-            self._pending_downloads.append((url, format_spec, format_id))
+            self._pending_downloads.append((url, format_spec, format_id, playlist_title))
             self.set_status("URL en file d'attente — mise à jour yt-dlp en cours…")
             speech.speak("URL ajoutée. Le téléchargement démarrera après la mise à jour de yt-dlp.", interrupt=False)
             return
         dl_id = self._queue.add(url, format_spec=format_spec, format_id=format_id,
-                                referer=referer, cookies=cookies)
+                                referer=referer, cookies=cookies, playlist_title=playlist_title)
         label = format_spec.upper() if format_spec != "auto" else "Auto"
         self.download_list.add_item(dl_id, url, site="—", fmt=label)
         # Stocker pour retry et rapport d'erreur
         self._dl_data[dl_id] = {
             "url": url, "format_spec": format_spec, "format_id": format_id,
             "referer": referer, "cookies": cookies, "site": "",
+            "playlist_title": playlist_title,
         }
         self._dl_data["__last_fmt__"] = format_spec
         self.set_count(self.download_list.count())
@@ -688,7 +731,8 @@ class MainWindow(wx.Frame):
         # Supprimer l'item échoué et relancer
         self.download_list.remove_selected()
         self._dl_data.pop(dl_id, None)
-        self._enqueue_url(data["url"], data["format_spec"], data.get("format_id"))
+        self._enqueue_url(data["url"], data["format_spec"], data.get("format_id"),
+                          playlist_title=data.get("playlist_title"))
         self.set_status("Téléchargement relancé.")
 
     def _on_move_up(self, _event) -> None:
@@ -915,8 +959,8 @@ class MainWindow(wx.Frame):
                 f"Démarrage de {n} téléchargement{'s' if n > 1 else ''} en attente.",
                 interrupt=False,
             )
-            for url, fmt, fid in pending:
-                self._enqueue_url(url, fmt, fid)
+            for url, fmt, fid, plt in pending:
+                self._enqueue_url(url, fmt, fid, playlist_title=plt)
 
     def set_status(self, message: str) -> None:
         """Met à jour le premier panneau de la barre de statut (lu par NVDA)."""

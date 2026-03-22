@@ -15,6 +15,7 @@ DEFAULTS: dict = {
     "subtitle_langs": ["fr", "en"],
     "subtitle_format": "srt",       # srt | vtt | original
     "organize_by_site": False,
+    "organize_by_playlist": False,
     "clipboard_monitor": False,
     "ytdlp_extra_opts": [],
     "user_email": "",

@@ -1,9 +1,11 @@
 import wx
+from app.core import logger as _logger
 from app.core import updater
 from app.ui.main_window import MainWindow
 
 
 def main():
+    _logger.setup()
     app = wx.App(False)
     frame = MainWindow(None)
     frame.Show()

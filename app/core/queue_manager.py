@@ -1,3 +1,4 @@
+import logging
 import threading
 import uuid
 from dataclasses import dataclass, field
@@ -6,6 +7,8 @@ from typing import Callable
 import wx
 
 from app.core.downloader import Downloader, DownloadError, DownloadInfo, DownloadProgress
+
+_log = logging.getLogger("downaccess.queue")
 
 
 @dataclass
@@ -16,6 +19,7 @@ class QueueItem:
     format_id: str | None = None     # format_id yt-dlp (mode manuel)
     referer: str | None = None       # Referer HTTP (UGE)
     cookies: str | None = None       # Cookies de session (UGE, document.cookie)
+    playlist_title: str | None = None  # Titre de la playlist parente (organisation dossier)
     stop_event:  threading.Event = field(default_factory=threading.Event)
     pause_event: threading.Event = field(default_factory=threading.Event)
 
@@ -67,7 +71,8 @@ class QueueManager:
         return self._settings.get("max_concurrent_downloads", 2)
 
     def add(self, url: str, format_spec: str = "auto", format_id: str | None = None,
-            referer: str | None = None, cookies: str | None = None) -> str:
+            referer: str | None = None, cookies: str | None = None,
+            playlist_title: str | None = None) -> str:
         """Ajoute une URL à la file. Retourne le download_id."""
         dl_id = str(uuid.uuid4())
         item = QueueItem(
@@ -77,9 +82,11 @@ class QueueManager:
             format_id=format_id,
             referer=referer,
             cookies=cookies,
+            playlist_title=playlist_title,
         )
         with self._lock:
             self._queue.append(item)
+        _log.info("Ajout file id=%s url=%s format=%s", dl_id, url, format_spec)
         self._try_start_next()
         return dl_id
 
@@ -139,6 +146,14 @@ class QueueManager:
                 item.stop_event.set()
             self._queue.clear()
 
+    def get_state(self) -> dict:
+        """Retourne l'état courant de la file (thread-safe)."""
+        with self._lock:
+            return {
+                "pending": [{"id": i.download_id, "url": i.url} for i in self._queue],
+                "active":  [{"id": i.download_id, "url": i.url} for i in self._active.values()],
+            }
+
     # ------------------------------------------------------------------
     # Démarrage des workers
     # ------------------------------------------------------------------
@@ -158,6 +173,7 @@ class QueueManager:
     def _worker(self, item: QueueItem) -> None:
         dl = Downloader(self._settings)
         dl_id = item.download_id
+        _log.info("Démarrage worker id=%s url=%s", dl_id, item.url)
 
         # 1. Extraction des infos
         try:
@@ -167,16 +183,19 @@ class QueueManager:
                 return
             if info.is_playlist:
                 # Déléguer la gestion de la playlist à l'UI
+                _log.info("Playlist détectée id=%s url=%s", dl_id, item.url)
                 wx.CallAfter(self._on_playlist or self._on_info, info)
                 self._finish(dl_id)
                 return
             wx.CallAfter(self._on_info, info)
         except DownloadError as exc:
+            _log.error("Erreur fetch_info id=%s — %s", dl_id, exc)
             wx.CallAfter(self._on_error, dl_id, str(exc))
             self._finish(dl_id)
             return
 
         if item.stop_event.is_set():
+            _log.info("Annulé avant téléchargement id=%s", dl_id)
             self._finish(dl_id)
             return
 
@@ -192,13 +211,18 @@ class QueueManager:
                 format_id=item.format_id,
                 referer=item.referer,
                 cookies=item.cookies,
+                playlist_title=item.playlist_title,
             )
             if warning and self._on_warning:
                 wx.CallAfter(self._on_warning, dl_id, warning)
+            _log.info("Terminé avec succès id=%s url=%s", dl_id, item.url)
             wx.CallAfter(self._on_complete, dl_id)
         except DownloadError as exc:
             if not item.stop_event.is_set():
+                _log.error("Échec téléchargement id=%s — %s", dl_id, exc)
                 wx.CallAfter(self._on_error, dl_id, str(exc))
+            else:
+                _log.info("Annulé pendant téléchargement id=%s", dl_id)
 
         self._finish(dl_id)
 

@@ -1,4 +1,6 @@
 import io
+import logging
+import re
 import time
 import threading
 from dataclasses import dataclass, field
@@ -7,6 +9,8 @@ from typing import Callable
 import yt_dlp
 
 from app.core.ffmpeg_utils import get_ffmpeg_path
+
+_log = logging.getLogger("downaccess.downloader")
 
 
 @dataclass
@@ -123,6 +127,7 @@ class Downloader:
         cookies: str | None = None,
         verbose: bool = False,
         on_verbose_log: Callable[[str], None] | None = None,
+        playlist_title: str | None = None,
     ) -> str | None:
         """
         Télécharge l'URL dans le dossier configuré.
@@ -130,11 +135,22 @@ class Downloader:
         format_id      : format_id yt-dlp spécifique (mode manuel uniquement)
         verbose        : active les logs yt-dlp détaillés (mode diagnostic)
         on_verbose_log : appelé avec le log complet en fin de téléchargement
+        playlist_title : titre de la playlist parente (pour l'organisation en sous-dossier)
         """
+        _log.info("Démarrage téléchargement id=%s url=%s format=%s", download_id, url, format_spec)
         dest = self._settings.get("download_folder", ".")
 
-        if self._settings.get("organize_by_site"):
+        by_site     = self._settings.get("organize_by_site", False)
+        by_playlist = self._settings.get("organize_by_playlist", False) and playlist_title
+
+        if by_site and by_playlist:
+            pl_safe = _sanitize_dirname(playlist_title)
+            outtmpl = f"{dest}/%(extractor_key)s/{pl_safe}/%(title)s.%(ext)s"
+        elif by_site:
             outtmpl = f"{dest}/%(extractor_key)s/%(title)s.%(ext)s"
+        elif by_playlist:
+            pl_safe = _sanitize_dirname(playlist_title)
+            outtmpl = f"{dest}/{pl_safe}/%(title)s.%(ext)s"
         else:
             outtmpl = f"{dest}/%(title)s.%(ext)s"
 
@@ -185,6 +201,7 @@ class Downloader:
             err_msg = str(exc)
             if log_buf is not None and on_verbose_log is not None:
                 on_verbose_log(log_buf.getvalue())
+            _log.error("Échec téléchargement id=%s url=%s — %s", download_id, url, err_msg)
             # Sous-titres inaccessibles → réessayer sans sous-titres,
             # mais conserver l'erreur comme warning reportable.
             if "subtitles" in err_msg.lower() and opts.get("writesubtitles"):
@@ -209,11 +226,13 @@ class Downloader:
         except Exception as exc:
             if log_buf is not None and on_verbose_log is not None:
                 on_verbose_log(log_buf.getvalue())
+            _log.error("Erreur inattendue id=%s url=%s — %s", download_id, url, exc)
             raise DownloadError(str(exc)) from exc
 
         if log_buf is not None and on_verbose_log is not None:
             on_verbose_log(log_buf.getvalue())
 
+        _log.info("Téléchargement terminé id=%s url=%s", download_id, url)
         return subtitle_warning
 
     # ------------------------------------------------------------------
@@ -318,6 +337,12 @@ def _apply_subtitles(opts: dict, settings: dict) -> None:
             "key":    "FFmpegSubtitlesConvertor",
             "format": subfmt,
         })
+
+
+def _sanitize_dirname(name: str) -> str:
+    """Supprime les caractères interdits dans les noms de dossiers Windows."""
+    sanitized = re.sub(r'[\\/:*?"<>|]', '_', name)
+    return sanitized.strip('. ') or "Playlist"
 
 
 class DownloadError(Exception):
