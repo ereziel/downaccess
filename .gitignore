@@ -51,3 +51,6 @@ desktop.ini
 CLAUDE.md
 context.md
 plan.md
+
+# Release notes rédigées avant chaque release (non versionnées)
+RELEASE_NOTES.md

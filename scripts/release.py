@@ -51,15 +51,25 @@ def ok(msg: str) -> None:
 
 
 def _generate_notes(tag: str) -> str:
-    """Génère les release notes depuis git log (commits depuis le dernier tag)."""
-    # Trouver le dernier tag existant
+    """
+    Génère les release notes.
+    Priorité :
+      1. RELEASE_NOTES.md à la racine (rédigé manuellement avant la release)
+      2. Auto-généré depuis git log (commits depuis le dernier tag)
+    """
+    rn_file = ROOT / "RELEASE_NOTES.md"
+    if rn_file.exists():
+        notes = rn_file.read_text(encoding="utf-8").strip()
+        print(f"  (source : RELEASE_NOTES.md)")
+        return notes
+
+    # Auto-génération depuis git log
+    print(f"  (source : git log automatique)")
     result = subprocess.run(
         ["git", "describe", "--tags", "--abbrev=0"],
         cwd=ROOT, capture_output=True, text=True,
     )
     last_tag = result.stdout.strip() if result.returncode == 0 else ""
-
-    # Récupérer les commits depuis ce tag (ou tous si premier tag)
     ref = f"{last_tag}..HEAD" if last_tag else "HEAD"
     log = subprocess.run(
         ["git", "log", ref, "--pretty=format:- %s", "--no-merges"],
@@ -72,15 +82,15 @@ def _generate_notes(tag: str) -> str:
     if vf.exists():
         for line in vf.read_text(encoding="utf-8").splitlines():
             if line.startswith("updated="):
-                ffmpeg_ver = f"\nffmpeg : {line.split('=',1)[1]}"
+                ffmpeg_ver = line.split("=", 1)[1]
 
     notes = f"## DownAccess {tag}\n\n"
     if commits:
         notes += "### Changements\n" + commits + "\n"
     else:
-        notes += "- Mise à jour interne\n"
+        notes += "- Mise a jour interne\n"
     if ffmpeg_ver:
-        notes += f"\n### Dépendances{ffmpeg_ver}\n"
+        notes += f"\n### Dependances\n- ffmpeg : {ffmpeg_ver}\n"
     return notes
 
 
