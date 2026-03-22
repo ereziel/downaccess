@@ -45,6 +45,51 @@ ID_UPDATE_APP   = wx.NewIdRef()
 ID_CONTACT      = wx.NewIdRef()
 
 
+class _AppDownloadDialog(wx.Frame):
+    """
+    Fenêtre de progression du téléchargement d'une mise à jour DownAccess.
+    Non-modale pour ne pas bloquer l'UI. Reste au premier plan.
+    """
+
+    def __init__(self, parent, version: str):
+        super().__init__(
+            parent,
+            title=f"Téléchargement de DownAccess {version}",
+            style=wx.DEFAULT_FRAME_STYLE & ~(wx.RESIZE_BORDER | wx.MAXIMIZE_BOX | wx.MINIMIZE_BOX),
+            size=(420, 130),
+        )
+        self._build_ui(version)
+        self.CentreOnParent()
+
+    def _build_ui(self, version: str) -> None:
+        panel = wx.Panel(self)
+        sizer = wx.BoxSizer(wx.VERTICAL)
+
+        self._lbl = wx.StaticText(
+            panel,
+            label=f"Téléchargement de DownAccess {version}…",
+        )
+        self._gauge = wx.Gauge(
+            panel, range=100,
+            style=wx.GA_HORIZONTAL | wx.GA_SMOOTH,
+            name="Progression du téléchargement",
+        )
+        self._lbl_pct = wx.StaticText(panel, label="0 %")
+
+        sizer.Add(self._lbl,     0, wx.ALL,             12)
+        sizer.Add(self._gauge,   0, wx.EXPAND | wx.LEFT | wx.RIGHT, 12)
+        sizer.Add(self._lbl_pct, 0, wx.LEFT | wx.TOP,   12)
+        panel.SetSizer(sizer)
+
+    def update(self, percent: float) -> None:
+        pct = int(min(max(percent, 0), 100))
+        self._gauge.SetValue(pct)
+        self._lbl_pct.SetLabel(f"{pct} %")
+        if pct >= 100:
+            self._lbl.SetLabel("Installation en cours…")
+            speech.speak("Téléchargement terminé. Installation en cours.")
+
+
 class MainWindow(wx.Frame):
     def __init__(self, parent):
         super().__init__(
@@ -845,8 +890,9 @@ class MainWindow(wx.Frame):
         elif status == "update_available":
             dlg = UpdateDialog(self, new_version=info, release_notes=release_notes)
             if dlg.ShowModal() == wx.ID_OK:
-                self.set_status(f"Téléchargement de DownAccess {info}…")
                 self.mi_update_app.Enable(False)
+                self._app_dl_progress_dlg = _AppDownloadDialog(self, info)
+                self._app_dl_progress_dlg.Show()
                 app_updater.download_and_install(
                     new_version=info,
                     on_progress=lambda pct: wx.CallAfter(self._on_app_dl_progress, pct),
@@ -869,18 +915,19 @@ class MainWindow(wx.Frame):
 
     def _on_app_dl_progress(self, percent: float) -> None:
         self.set_status(f"Téléchargement de la mise à jour… {percent:.0f} %")
-        for milestone in (25, 50, 75, 100):
-            if abs(percent - milestone) < 2:
-                speech.speak(f"{milestone} pourcent.", interrupt=False)
-                break
+        if hasattr(self, "_app_dl_progress_dlg") and self._app_dl_progress_dlg:
+            self._app_dl_progress_dlg.update(percent)
 
     def _on_app_dl_error(self, message: str) -> None:
         self.mi_update_app.Enable(True)
+        if hasattr(self, "_app_dl_progress_dlg") and self._app_dl_progress_dlg:
+            self._app_dl_progress_dlg.Destroy()
+            self._app_dl_progress_dlg = None
         self.set_status("Erreur lors du téléchargement de la mise à jour.")
         speech.speak("Erreur lors du téléchargement.")
         wx.MessageBox(
             f"Impossible de télécharger la mise à jour :\n\n{message}",
-            "Erreur de mise à jour", wx.OK | wx.ICON_ERROR,
+            "Erreur de mise à jour", wx.OK | wx.ICON_ERROR, self,
         )
 
     def check_app_update_at_startup(self) -> None:
@@ -892,11 +939,12 @@ class MainWindow(wx.Frame):
 
     def _on_update_ytdlp(self, _event) -> None:
         self.set_status("Vérification de la version yt-dlp…")
-        speech.speak("Vérification de la version yt-dlp.")
         self.mi_update_ydl.Enable(False)
 
         updater.check_and_update(
-            on_done=lambda status, info: wx.CallAfter(self.on_ytdlp_update_done, status, info)
+            on_done=lambda status, info: wx.CallAfter(
+                self.on_ytdlp_update_done, status, info, from_menu=True
+            )
         )
 
     def _on_contact(self, _event) -> None:
@@ -931,36 +979,56 @@ class MainWindow(wx.Frame):
     # API publique (appelée depuis les threads via wx.CallAfter)
     # ------------------------------------------------------------------
 
-    def on_ytdlp_update_done(self, status: str, info: str) -> None:
+    def on_ytdlp_update_done(self, status: str, info: str, from_menu: bool = False) -> None:
         """
-        Callback commun pour bootstrap() et le menu Mettre à jour.
+        Callback pour bootstrap() (démarrage, silencieux) et le menu Mettre à jour (from_menu=True).
         status : "up_to_date" | "updated" | "installed" | "error"
         info   : version ou message d'erreur
         """
         self.mi_update_ydl.Enable(True)
         self._updater_running = False
 
+        if not from_menu:
+            # Démarrage : complètement silencieux, on débloque juste les téléchargements
+            return
+
+        # Déclenchement manuel depuis le menu
         if status == "up_to_date":
-            msg = f"yt-dlp est à jour. Version {info}."
-            self.set_status(msg)
-            speech.speak(msg)
+            self.set_status(f"yt-dlp est à jour. Version {info}.")
+            speech.speak(f"yt-dlp est à jour.")
+            wx.MessageBox(
+                f"yt-dlp est déjà à jour.\n\nVersion actuelle : {info}",
+                "yt-dlp à jour",
+                wx.OK | wx.ICON_INFORMATION,
+                self,
+            )
         elif status == "updated":
-            msg = f"yt-dlp mis à jour. Nouvelle version : {info}."
-            self.set_status(msg)
-            speech.speak(msg)
+            self.set_status(f"yt-dlp mis à jour. Version {info}.")
+            speech.speak(f"yt-dlp mis à jour.")
+            wx.MessageBox(
+                f"yt-dlp a été mis à jour avec succès.\n\nNouvelle version : {info}",
+                "yt-dlp mis à jour",
+                wx.OK | wx.ICON_INFORMATION,
+                self,
+            )
         elif status == "installed":
-            msg = f"yt-dlp installé. Version {info}."
-            self.set_status(msg)
-            speech.speak(msg)
+            self.set_status(f"yt-dlp installé. Version {info}.")
+            speech.speak(f"yt-dlp installé.")
+            wx.MessageBox(
+                f"yt-dlp a été installé avec succès.\n\nVersion : {info}",
+                "yt-dlp installé",
+                wx.OK | wx.ICON_INFORMATION,
+                self,
+            )
         elif status == "error":
-            msg = "Échec de la mise à jour de yt-dlp."
-            self.set_status(msg)
-            speech.speak(msg)
+            self.set_status("Échec de la mise à jour de yt-dlp.")
+            speech.speak("Échec de la mise à jour de yt-dlp.")
             wx.MessageBox(
                 f"La mise à jour de yt-dlp a échoué :\n\n{info}\n\n"
                 "Vérifiez votre connexion et réessayez via Aide → Mettre à jour yt-dlp.",
                 "Erreur yt-dlp",
                 wx.OK | wx.ICON_ERROR,
+                self,
             )
 
         # Démarrer les téléchargements mis en attente pendant la mise à jour
