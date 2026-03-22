@@ -2,9 +2,13 @@
 Résolution du chemin ffmpeg.
 Priorité :
   1. Chemin configuré par l'utilisateur (Préférences → Avancé)
-  2. Binaire fourni par imageio-ffmpeg (inclus dans le package)
-  3. ffmpeg dans le PATH (fallback)
+  2. Bundle PyInstaller : _internal/ffmpeg.exe (à côté de l'exe)
+  3. Développement : assets/ffmpeg.exe (voir scripts/update_ffmpeg.py)
+  4. imageio-ffmpeg (fallback legacy)
+  5. ffmpeg dans le PATH
 """
+import sys
+from pathlib import Path
 
 
 def get_ffmpeg_path(settings: dict) -> str:
@@ -13,6 +17,18 @@ def get_ffmpeg_path(settings: dict) -> str:
     if configured and configured != "ffmpeg":
         return configured
 
+    # Bundle PyInstaller (one-dir) : ffmpeg.exe est dans _internal/
+    if getattr(sys, "frozen", False):
+        bundled = Path(sys.executable).parent / "_internal" / "ffmpeg.exe"
+        if bundled.exists():
+            return str(bundled)
+
+    # Développement : assets/ffmpeg.exe
+    dev_path = Path(__file__).parent.parent.parent / "assets" / "ffmpeg.exe"
+    if dev_path.exists():
+        return str(dev_path)
+
+    # Fallback legacy imageio-ffmpeg
     try:
         import imageio_ffmpeg
         return imageio_ffmpeg.get_ffmpeg_exe()
