@@ -22,6 +22,7 @@ from app.ui.uge_dialog import UGEDialog
 from app.ui.update_dialog import UpdateDialog
 from app.ui.contact_dialog import ContactDialog
 from app.ui.error_dialog import ErrorDialog
+from app.ui.warning_dialog import WarningDialog
 from app.ui.report_dialog import ReportDialog
 from app.core import error_reporter
 from app.core.downloader import Downloader
@@ -75,8 +76,9 @@ class MainWindow(wx.Frame):
     def _init_queue(self) -> None:
         # Stocke les données par download_id pour le retry
         self._dl_data: dict[str, dict] = {}
-        # Dernier jalon annoncé par download_id (25/50/75)
-        self._progress_milestones: dict[str, int] = {}
+        # Progression courante par download_id (pour la gauge)
+        self._progress: dict[str, float] = {}
+        self._gauge_dl_id: str | None = None
         # Mise à jour yt-dlp en cours au démarrage → bloquer les téléchargements
         self._updater_running: bool = True
         self._pending_downloads: list[tuple[str, str, str | None]] = []
@@ -87,29 +89,30 @@ class MainWindow(wx.Frame):
             on_complete=self._on_dl_complete,
             on_error=self._on_dl_error,
             on_playlist=self._on_dl_playlist,
+            on_warning=self._on_dl_warning,
         )
 
     def _on_dl_info(self, info: DownloadInfo) -> None:
         self.download_list.update_info(info.download_id, info.title, info.site, info.fmt)
         if info.download_id in self._dl_data:
-            self._dl_data[info.download_id]["site"] = info.site
+            self._dl_data[info.download_id]["site"]  = info.site
+            self._dl_data[info.download_id]["title"] = info.title
         title = info.title or info.url
         speech.speak(f"Téléchargement démarré : {title}.", interrupt=False)
 
     def _on_dl_progress(self, prog: DownloadProgress) -> None:
         self.download_list.update_progress(prog.download_id, prog.percent, prog.size)
-        self.set_status(f"Téléchargement en cours… {prog.percent:.0f} %")
-        # Annoncer les jalons 25 / 50 / 75 % (pas à chaque tick)
-        last = self._progress_milestones.get(prog.download_id, 0)
-        for milestone in (25, 50, 75):
-            if prog.percent >= milestone > last:
-                speech.speak(f"{milestone} pourcent.", interrupt=False)
-                self._progress_milestones[prog.download_id] = milestone
-                break
+        self._progress[prog.download_id] = prog.percent
+        # La gauge suit le dernier download actif sauf si l'utilisateur
+        # a sélectionné un autre item dans la liste
+        if self._gauge_dl_id is None or self._gauge_dl_id == prog.download_id:
+            self._update_gauge(prog.download_id, prog.percent)
 
     def _on_dl_complete(self, download_id: str) -> None:
         self.download_list.complete_item(download_id)
-        self._progress_milestones.pop(download_id, None)
+        self._progress.pop(download_id, None)
+        if self._gauge_dl_id == download_id:
+            self._reset_gauge()
         self.set_status("Téléchargement terminé.")
         speech.speak("Téléchargement terminé.")
         # Ouvrir le dossier si tous les téléchargements sont terminés
@@ -118,9 +121,20 @@ class MainWindow(wx.Frame):
 
     def _on_dl_error(self, download_id: str, message: str) -> None:
         self.download_list.error_item(download_id)
+        self._progress.pop(download_id, None)
+        if self._gauge_dl_id == download_id:
+            self._reset_gauge()
         self.set_status("Erreur lors du téléchargement.")
-        speech.speak("Erreur lors du téléchargement.")
         dlg = ErrorDialog(self, message)
+        dlg.ShowModal()
+        if dlg.wants_report():
+            self._start_error_report(download_id, message)
+        dlg.Destroy()
+
+    def _on_dl_warning(self, download_id: str, message: str) -> None:
+        self.set_status("Téléchargement terminé avec avertissement.")
+        speech.speak("Téléchargement terminé avec avertissement.")
+        dlg = WarningDialog(self, message)
         dlg.ShowModal()
         if dlg.wants_report():
             self._start_error_report(download_id, message)
@@ -221,6 +235,27 @@ class MainWindow(wx.Frame):
                 self._enqueue_url(url, fmt_choice)
 
         speech.speak(f"{len(selected)} vidéos ajoutées à la file.")
+
+    def _update_gauge(self, dl_id: str, percent: float) -> None:
+        self._gauge_dl_id = dl_id
+        self.gauge.SetValue(int(percent))
+        title = self._dl_data.get(dl_id, {}).get("title") or self._dl_data.get(dl_id, {}).get("url", "")
+        self.lbl_gauge_title.SetLabel(title)
+
+    def _reset_gauge(self) -> None:
+        # Si un autre download est encore actif, lui passer la gauge
+        for dl_id, pct in self._progress.items():
+            self._update_gauge(dl_id, pct)
+            return
+        self._gauge_dl_id = None
+        self.gauge.SetValue(0)
+        self.lbl_gauge_title.SetLabel("")
+
+    def _on_list_select(self, event) -> None:
+        dl_id = self.download_list.get_selected_id()
+        if dl_id and dl_id in self._progress:
+            self._update_gauge(dl_id, self._progress[dl_id])
+        event.Skip()
 
     def _all_done(self) -> bool:
         """Retourne True si aucun téléchargement n'est en cours ou en attente."""
@@ -354,6 +389,18 @@ class MainWindow(wx.Frame):
         sizer = wx.BoxSizer(wx.VERTICAL)
         self.download_list = DownloadList(panel)
         sizer.Add(self.download_list, 1, wx.EXPAND | wx.ALL, 4)
+
+        # Barre de progression native
+        prog_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        self.lbl_gauge_title = wx.StaticText(panel, label="", size=(220, -1),
+                                             style=wx.ST_ELLIPSIZE_END)
+        self.gauge = wx.Gauge(panel, range=100,
+                              style=wx.GA_HORIZONTAL | wx.GA_SMOOTH,
+                              name="Progression du téléchargement actif")
+        prog_sizer.Add(self.lbl_gauge_title, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 8)
+        prog_sizer.Add(self.gauge, 1, wx.EXPAND | wx.ALL, 6)
+        sizer.Add(prog_sizer, 0, wx.EXPAND)
+
         panel.SetSizer(sizer)
 
     def _build_statusbar(self) -> None:
@@ -386,6 +433,7 @@ class MainWindow(wx.Frame):
         self.Bind(wx.EVT_MENU, self._on_contact,        id=ID_CONTACT)
         self.Bind(wx.EVT_MENU, self._on_about,          id=wx.ID_ABOUT)
         self.Bind(wx.EVT_CLOSE, self._on_close)
+        self.download_list.Bind(wx.EVT_LIST_ITEM_SELECTED, self._on_list_select)
         # Ctrl+V global sur la fenêtre principale → coller URL directement
         accel = wx.AcceleratorTable([
             (wx.ACCEL_CTRL, ord("V"), wx.ID_PASTE),
@@ -439,7 +487,6 @@ class MainWindow(wx.Frame):
     def _on_search_done(self, site_label: str, result: dict) -> None:
         if "error" in result:
             self.set_status("Erreur lors de la recherche.")
-            speech.speak("Erreur lors de la recherche.")
             wx.MessageBox(
                 f"Erreur de recherche :\n\n{result['error']}",
                 "Erreur", wx.OK | wx.ICON_ERROR,
@@ -459,12 +506,24 @@ class MainWindow(wx.Frame):
             selected = dlg.get_selected_entries()
             fmt      = dlg.get_format()
 
+        enqueued = 0
         for entry in selected:
-            url = entry.get("url") or entry.get("webpage_url")
+            url = entry.get("webpage_url") or entry.get("url") or ""
+            # yt-dlp peut retourner un ID nu sans schéma en mode extract_flat
+            if url and not url.startswith("http"):
+                ie_key = (entry.get("ie_key") or entry.get("extractor_key") or "").lower()
+                vid_id = entry.get("id", "") or url
+                if "youtube" in ie_key or not ie_key:
+                    url = f"https://www.youtube.com/watch?v={vid_id}"
+                elif "bilibili" in ie_key or "bili" in ie_key:
+                    url = f"https://www.bilibili.com/video/{vid_id}"
+                else:
+                    url = ""
             if url:
                 self._enqueue_url(url, format_spec=fmt)
+                enqueued += 1
 
-        n = len(selected)
+        n = enqueued
         msg = f"{n} résultat{'s' if n > 1 else ''} ajouté{'s' if n > 1 else ''} à la file."
         self.set_status(msg)
         speech.speak(msg)
@@ -538,7 +597,6 @@ class MainWindow(wx.Frame):
     def _on_formats_ready(self, url: str, result: dict) -> None:
         if "error" in result:
             self.set_status("Impossible de récupérer les formats.")
-            speech.speak("Impossible de récupérer les formats.")
             wx.MessageBox(
                 f"Impossible de récupérer les formats :\n\n{result['error']}",
                 "Erreur", wx.OK | wx.ICON_ERROR,

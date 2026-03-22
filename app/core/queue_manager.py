@@ -26,6 +26,7 @@ OnProgress      = Callable[[DownloadProgress], None]
 OnComplete      = Callable[[str], None]           # download_id
 OnError         = Callable[[str, str], None]      # download_id, message
 OnPlaylist      = Callable[[DownloadInfo], None]  # info avec is_playlist=True
+OnWarning       = Callable[[str, str], None]      # download_id, message
 
 
 class QueueManager:
@@ -43,6 +44,7 @@ class QueueManager:
         on_complete: OnComplete,
         on_error:    OnError,
         on_playlist: OnPlaylist | None = None,
+        on_warning:  OnWarning  | None = None,
     ):
         self._settings    = settings
         self._on_info     = on_info
@@ -50,6 +52,7 @@ class QueueManager:
         self._on_complete = on_complete
         self._on_error    = on_error
         self._on_playlist = on_playlist
+        self._on_warning  = on_warning
 
         self._queue:   list[QueueItem]        = []
         self._active:  dict[str, QueueItem]   = {}   # download_id → item
@@ -182,7 +185,7 @@ class QueueManager:
             wx.CallAfter(self._on_progress, prog)
 
         try:
-            dl.download(
+            warning = dl.download(
                 dl_id, item.url, on_progress, item.stop_event,
                 pause_event=item.pause_event,
                 format_spec=item.format_spec,
@@ -190,6 +193,8 @@ class QueueManager:
                 referer=item.referer,
                 cookies=item.cookies,
             )
+            if warning and self._on_warning:
+                wx.CallAfter(self._on_warning, dl_id, warning)
             wx.CallAfter(self._on_complete, dl_id)
         except DownloadError as exc:
             if not item.stop_event.is_set():

@@ -28,8 +28,11 @@ class ReportDialog(wx.Dialog):
         self._on_confirmed  = on_confirmed  # Callable[[str, str], None] | None
         self._saved_email   = saved_email
         self._build_ui()
-        self.txt_comment.SetFocus()
+        self.txt_email.SetFocus()
         self.Centre()
+        speech.speak(
+            f"Rapport d'erreur. URL : {self._url or 'inconnue'}. Site : {self._site or 'inconnu'}."
+        )
 
     # ------------------------------------------------------------------
     # Construction de l'UI
@@ -99,6 +102,7 @@ class ReportDialog(wx.Dialog):
         self.txt_comment.Enable(False)
         self.lbl_status.SetLabel("Diagnostic en cours…")
         speech.speak("Diagnostic en cours.")
+        speech.braille("Diagnostic en cours…")
         self.Layout()
 
     def set_done(self, success: bool, message: str) -> None:
@@ -108,6 +112,7 @@ class ReportDialog(wx.Dialog):
         self.btn_cancel.Enable(True)
         self.btn_cancel.SetFocus()
         speech.speak(message)
+        speech.braille(message)
         self.Layout()
 
     # ------------------------------------------------------------------

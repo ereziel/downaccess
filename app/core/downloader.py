@@ -123,7 +123,7 @@ class Downloader:
         cookies: str | None = None,
         verbose: bool = False,
         on_verbose_log: Callable[[str], None] | None = None,
-    ) -> None:
+    ) -> str | None:
         """
         Télécharge l'URL dans le dossier configuré.
         format_spec    : "auto" | "mp4" | "mp3" | "m4a" | "manual"
@@ -176,13 +176,36 @@ class Downloader:
                 key = extra.lstrip("-").replace("-", "_")
                 opts[key] = True
 
+        subtitle_warning: str | None = None
+
         try:
             with yt_dlp.YoutubeDL(opts) as ydl:
                 ydl.download([url])
         except yt_dlp.utils.DownloadError as exc:
+            err_msg = str(exc)
             if log_buf is not None and on_verbose_log is not None:
                 on_verbose_log(log_buf.getvalue())
-            raise DownloadError(str(exc)) from exc
+            # Sous-titres inaccessibles → réessayer sans sous-titres,
+            # mais conserver l'erreur comme warning reportable.
+            if "subtitles" in err_msg.lower() and opts.get("writesubtitles"):
+                opts_retry = {k: v for k, v in opts.items()
+                              if k not in ("writesubtitles", "writeautomaticsub",
+                                           "subtitleslangs", "subtitlesformat")}
+                if "postprocessors" in opts_retry:
+                    opts_retry["postprocessors"] = [
+                        pp for pp in opts_retry["postprocessors"]
+                        if pp.get("key") != "FFmpegSubtitlesConvertor"
+                    ]
+                try:
+                    with yt_dlp.YoutubeDL(opts_retry) as ydl:
+                        ydl.download([url])
+                    subtitle_warning = err_msg
+                except yt_dlp.utils.DownloadError as exc2:
+                    raise DownloadError(str(exc2)) from exc2
+                except Exception as exc2:
+                    raise DownloadError(str(exc2)) from exc2
+            else:
+                raise DownloadError(err_msg) from exc
         except Exception as exc:
             if log_buf is not None and on_verbose_log is not None:
                 on_verbose_log(log_buf.getvalue())
@@ -190,6 +213,8 @@ class Downloader:
 
         if log_buf is not None and on_verbose_log is not None:
             on_verbose_log(log_buf.getvalue())
+
+        return subtitle_warning
 
     # ------------------------------------------------------------------
     # Hook de progression

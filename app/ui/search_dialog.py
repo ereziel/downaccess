@@ -194,7 +194,9 @@ class SearchResultsDialog(wx.Dialog):
 
     def _on_download(self, _event) -> None:
         if not self.get_selected_entries():
-            speech.speak("Aucun résultat sélectionné.")
+            msg = "Veuillez cocher au moins un résultat à télécharger (touche Espace)."
+            speech.speak(msg)
+            wx.MessageBox(msg, "Aucune sélection", wx.OK | wx.ICON_INFORMATION, self)
             return
         self.EndModal(wx.ID_OK)
 
