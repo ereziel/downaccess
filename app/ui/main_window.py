@@ -836,6 +836,12 @@ class MainWindow(wx.Frame):
             msg = f"DownAccess est à jour. Version {info}."
             self.set_status(msg)
             speech.speak(msg)
+            wx.MessageBox(
+                f"Vous utilisez déjà la dernière version de DownAccess.\n\nVersion actuelle : {info}",
+                "Aucune mise à jour disponible",
+                wx.OK | wx.ICON_INFORMATION,
+                self,
+            )
         elif status == "update_available":
             dlg = UpdateDialog(self, new_version=info, release_notes=release_notes)
             if dlg.ShowModal() == wx.ID_OK:
@@ -853,6 +859,13 @@ class MainWindow(wx.Frame):
             msg = "Impossible de vérifier la mise à jour."
             self.set_status(msg)
             speech.speak(msg)
+            wx.MessageBox(
+                f"Impossible de vérifier la mise à jour.\n\n{info}\n\n"
+                "Vérifiez votre connexion et réessayez.",
+                "Erreur de vérification",
+                wx.OK | wx.ICON_ERROR,
+                self,
+            )
 
     def _on_app_dl_progress(self, percent: float) -> None:
         self.set_status(f"Téléchargement de la mise à jour… {percent:.0f} %")
