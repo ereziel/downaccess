@@ -30,13 +30,9 @@ class ErrorDialog(wx.Dialog):
         lbl = wx.StaticText(self, label="Une erreur s'est produite :")
         sizer.Add(lbl, 0, wx.ALL, 12)
 
-        self.txt_msg = wx.TextCtrl(
-            self,
-            value=message,
-            style=wx.TE_MULTILINE | wx.TE_READONLY | wx.TE_RICH2,
-            name="Message d'erreur",
-        )
-        sizer.Add(self.txt_msg, 1, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 12)
+        lbl_msg = wx.StaticText(self, label=message)
+        lbl_msg.Wrap(480)
+        sizer.Add(lbl_msg, 1, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 12)
 
         btn_sizer = wx.BoxSizer(wx.HORIZONTAL)
         self.btn_close  = wx.Button(self, wx.ID_OK,   label="Fermer",
