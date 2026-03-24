@@ -65,9 +65,15 @@ class Downloader:
             "no_warnings": True,
             "extract_flat": True,
             "skip_download": True,
+            "js_runtimes": {"node": {}},
         }
         if self._settings.get("proxy_http"):
             flat_opts["proxy"] = self._settings["proxy_http"]
+
+        # Cookies depuis le navigateur intégré (WebView2)
+        if self._settings.get("use_webview_cookies"):
+            from app.core.cookies import apply_cookies
+            apply_cookies(flat_opts)
 
         try:
             with yt_dlp.YoutubeDL(flat_opts) as ydl:
@@ -162,6 +168,7 @@ class Downloader:
             "no_warnings":    not verbose,
             "verbose":        verbose,
             "progress_hooks": [self._make_hook(download_id, on_progress, stop_event, pause_event)],
+            "js_runtimes":    {"node": {}},
         }
 
         if verbose and log_buf is not None:
@@ -185,6 +192,11 @@ class Downloader:
 
         # Impersonation navigateur pour contourner Cloudflare / HTTP/2 obligatoire
         opts["extractor_args"] = {"generic": {"impersonate": [""]}}
+
+        # Cookies depuis le navigateur intégré (WebView2)
+        if self._settings.get("use_webview_cookies"):
+            from app.core.cookies import apply_cookies
+            apply_cookies(opts)
 
         _apply_format(opts, format_spec, format_id)
         _apply_subtitles(opts, self._settings)

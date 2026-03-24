@@ -19,6 +19,7 @@ DEFAULTS: dict = {
     "clipboard_monitor": False,
     "ytdlp_extra_opts": [],
     "user_email": "",
+    "use_webview_cookies": False,
 }
 
 

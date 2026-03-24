@@ -20,6 +20,7 @@ from app.ui.playlist_dialog import PlaylistDialog
 from app.ui.search_dialog import SearchDialog, SearchResultsDialog
 from app.ui.settings_dialog import SettingsDialog
 from app.ui.uge_dialog import UGEDialog
+from app.ui.login_dialog import LoginDialog
 from app.ui.update_dialog import UpdateDialog
 from app.ui.contact_dialog import ContactDialog
 from app.ui.error_dialog import ErrorDialog
@@ -47,6 +48,7 @@ ID_RETRY        = wx.NewIdRef()
 ID_MOVE_UP      = wx.NewIdRef()
 ID_MOVE_DOWN    = wx.NewIdRef()
 ID_UGE          = wx.NewIdRef()
+ID_LOGIN        = wx.NewIdRef()
 ID_SHORTCUTS    = wx.NewIdRef()
 ID_UPDATE_YDL   = wx.NewIdRef()
 ID_CLIP_TOGGLE  = wx.NewIdRef()
@@ -387,6 +389,10 @@ class MainWindow(wx.Frame):
             ID_UGE, "Extraction &guidée...\tCtrl+G",
             "Ouvrir le navigateur intégré pour détecter les médias sur n'importe quelle page",
         )
+        self.mi_login = file_menu.Append(
+            ID_LOGIN, "Se &connecter à un site...",
+            "Ouvrir un navigateur pour se connecter à un site et sauvegarder les cookies",
+        )
         self.mi_search = file_menu.Append(
             ID_SEARCH, "&Rechercher...\tCtrl+F",
             "Rechercher des vidéos ou musiques sur YouTube, SoundCloud, etc.",
@@ -512,6 +518,7 @@ class MainWindow(wx.Frame):
     def _bind_events(self) -> None:
         self.Bind(wx.EVT_MENU, self._on_add_url,        id=wx.ID_NEW)
         self.Bind(wx.EVT_MENU, self._on_uge,            id=ID_UGE)
+        self.Bind(wx.EVT_MENU, self._on_login,          id=ID_LOGIN)
         self.Bind(wx.EVT_MENU, self._on_search,         id=ID_SEARCH)
         self.Bind(wx.EVT_MENU, self._on_open_folder,    id=wx.ID_OPEN)
         self.Bind(wx.EVT_MENU, self._on_preferences,    id=wx.ID_PREFERENCES)
@@ -630,6 +637,10 @@ class MainWindow(wx.Frame):
             on_add_url=lambda url, referer=None, cookies=None:
                 self._enqueue_url(url, referer=referer, cookies=cookies),
         )
+        dlg.Show()
+
+    def _on_login(self, _event) -> None:
+        dlg = LoginDialog(self)
         dlg.Show()
 
     def _on_add_url(self, _event) -> None:

@@ -185,12 +185,27 @@ class SettingsDialog(wx.Dialog):
         lbl_ua = wx.StaticText(page, label="User-Agent personnalisé (laisser vide = défaut) :")
         self.txt_useragent = wx.TextCtrl(page, name="User-Agent")
 
-        sizer.Add(lbl_proxy_http,    0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 12)
-        sizer.Add(self.txt_proxy_http, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 6)
-        sizer.Add(lbl_proxy_socks,   0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 12)
+        # Cookies
+        self.chk_cookies = wx.CheckBox(
+            page,
+            label="Utiliser les cookies du navigateur intégré (pour le contenu protégé)",
+            name="Utiliser les cookies du navigateur intégré",
+        )
+        lbl_cookies_hint = wx.StaticText(
+            page,
+            label="Connectez-vous via Outils → Se connecter à un site, "
+                  "puis activez cette option.",
+        )
+        lbl_cookies_hint.SetForegroundColour(wx.SystemSettings.GetColour(wx.SYS_COLOUR_GRAYTEXT))
+
+        sizer.Add(lbl_proxy_http,      0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 12)
+        sizer.Add(self.txt_proxy_http,  0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 6)
+        sizer.Add(lbl_proxy_socks,     0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 12)
         sizer.Add(self.txt_proxy_socks, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 6)
-        sizer.Add(lbl_ua,            0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 12)
-        sizer.Add(self.txt_useragent, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 6)
+        sizer.Add(lbl_ua,              0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 12)
+        sizer.Add(self.txt_useragent,   0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 6)
+        sizer.Add(self.chk_cookies,     0, wx.LEFT | wx.RIGHT | wx.TOP, 12)
+        sizer.Add(lbl_cookies_hint,     0, wx.LEFT | wx.RIGHT | wx.TOP, 12)
 
         page.SetSizer(sizer)
         return page
@@ -263,6 +278,9 @@ class SettingsDialog(wx.Dialog):
         self.txt_proxy_socks.SetValue(s.get("proxy_socks", ""))
         self.txt_useragent.SetValue(s.get("user_agent", ""))
 
+        # Cookies
+        self.chk_cookies.SetValue(s.get("use_webview_cookies", False))
+
         # Avancé
         self.txt_ffmpeg.SetValue(s.get("ffmpeg_path", "ffmpeg"))
         self.txt_ytdlp_opts.SetValue("\n".join(s.get("ytdlp_extra_opts", [])))
@@ -290,6 +308,9 @@ class SettingsDialog(wx.Dialog):
         s["proxy_http"]  = self.txt_proxy_http.GetValue().strip()
         s["proxy_socks"] = self.txt_proxy_socks.GetValue().strip()
         s["user_agent"]  = self.txt_useragent.GetValue().strip()
+
+        # Cookies
+        s["use_webview_cookies"] = self.chk_cookies.GetValue()
 
         # Avancé
         s["ffmpeg_path"] = self.txt_ffmpeg.GetValue().strip() or "ffmpeg"
