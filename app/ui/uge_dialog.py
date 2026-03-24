@@ -378,6 +378,13 @@ class UGEDialog(wx.Frame):
         event.Skip()
 
     def _on_page_loaded(self, _event) -> None:
+        # Ne pas injecter les scripts sur about:blank ou pages spéciales
+        try:
+            current_url = self.browser.GetCurrentURL()
+        except Exception:
+            current_url = ""
+        if not current_url or current_url in ("about:blank", "") or current_url.startswith("edge://"):
+            return
         self.lbl_nav_status.SetLabel("Page chargée — lancez la vidéo pour détecter les médias.")
         self.browser.RunScript(_F6_SCRIPT)
         self.browser.RunScript(_MONITOR_SCRIPT)
@@ -386,11 +393,18 @@ class UGEDialog(wx.Frame):
 
     def _on_ua_change(self, _event) -> None:
         ua = _UA_MOBILE if self.choice_ua.GetSelection() == 1 else _UA_DESKTOP
-        # Injecter le User-Agent via JS (ne change pas les headers HTTP mais aide certains sites)
+        # Injecter le User-Agent via JS (configurable pour permettre les changements suivants)
         self.browser.RunScript(
-            f"Object.defineProperty(navigator, 'userAgent', {{get: () => '{ua}'}});"
+            f"Object.defineProperty(navigator, 'userAgent', "
+            f"{{get: () => '{ua}', configurable: true}});"
         )
-        speech.speak("Mode changé. Rechargez la page pour appliquer.")
+        # Recharger la page pour appliquer le nouveau User-Agent
+        try:
+            current_url = self.browser.GetCurrentURL()
+            if current_url and current_url not in ("about:blank", ""):
+                self.browser.LoadURL(current_url)
+        except Exception:
+            pass
 
     # ------------------------------------------------------------------
     # Polling JS → détection des médias

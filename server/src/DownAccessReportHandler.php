@@ -26,7 +26,7 @@ final class DownAccessReportHandler
     ) {
     }
 
-    public function handle(string $requestMethod, string $rawBody, array $server): array
+    public function handle(string $requestMethod, string $rawBody, array $server, array $post = [], array $files = []): array
     {
         if (strtoupper($requestMethod) !== 'POST') {
             return [405, $this->error('method_not_allowed', 'Méthode non autorisée.')];
@@ -39,9 +39,23 @@ final class DownAccessReportHandler
             return [401, $this->error('unauthorized', 'Accès non autorisé.')];
         }
 
-        $payload = json_decode($rawBody, true);
+        // Support multipart (champ "report" JSON + fichier "log_file") ou JSON brut
+        if (isset($post['report'])) {
+            $payload = json_decode($post['report'], true);
+        } else {
+            $payload = json_decode($rawBody, true);
+        }
+
         if (!is_array($payload)) {
             return [400, $this->error('invalid_json', 'JSON invalide.')];
+        }
+
+        // Récupérer le fichier log si envoyé en pièce jointe
+        $logFilePath = null;
+        $logFileName = null;
+        if (isset($files['log_file']) && $files['log_file']['error'] === UPLOAD_ERR_OK) {
+            $logFilePath = $files['log_file']['tmp_name'];
+            $logFileName = $files['log_file']['name'] ?: 'downaccess.log';
         }
 
         $validationError = $this->validate($payload);
@@ -59,7 +73,7 @@ final class DownAccessReportHandler
         }
 
         try {
-            $this->sendMail($payload);
+            $this->sendMail($payload, $logFilePath, $logFileName);
         } catch (Throwable $e) {
             return [500, $this->error('server_error', "Envoi email échoué : " . $e->getMessage())];
         }
@@ -78,9 +92,9 @@ final class DownAccessReportHandler
         return null;
     }
 
-    private function sendMail(array $p): void
+    private function sendMail(array $p, ?string $logFilePath = null, ?string $logFileName = null): void
     {
-        $smtpPass = getenv(self::SMTP_PASSWORD_ENV) ?: '';
+        $smtpPass = trim(getenv(self::SMTP_PASSWORD_ENV) ?: '', '" ');
         if ($smtpPass === '') {
             throw new PHPMailerException('SMTP password missing.');
         }
@@ -130,6 +144,11 @@ final class DownAccessReportHandler
             $appVersion, $ytdlpVersion, $os, $timestamp,
             $url, $site, $formatSpec, $errorMessage, $verboseLog, $userComment, $email
         );
+
+        // Joindre le fichier log si disponible
+        if ($logFilePath !== null && file_exists($logFilePath)) {
+            $mailer->addAttachment($logFilePath, $logFileName ?? 'downaccess.log', 'base64', 'text/plain');
+        }
 
         $mailer->send();
     }

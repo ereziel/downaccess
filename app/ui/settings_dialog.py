@@ -311,7 +311,6 @@ class SettingsDialog(wx.Dialog):
     def _on_ok(self, _event) -> None:
         s = self._collect_values()
         if not s.get("download_folder"):
-            speech.speak("Erreur : le dossier de destination ne peut pas être vide.")
             wx.MessageBox(
                 "Le dossier de destination ne peut pas être vide.",
                 "Champ requis", wx.OK | wx.ICON_WARNING, self,

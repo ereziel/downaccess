@@ -116,6 +116,11 @@ class QueueManager:
                 return self._active[download_id].pause_event.is_set()
         return False
 
+    def is_active(self, download_id: str) -> bool:
+        """Retourne True si le téléchargement est en cours (actif)."""
+        with self._lock:
+            return download_id in self._active
+
     def move_up(self, download_id: str) -> bool:
         """Remonte un item en attente dans la file. Retourne True si déplacé."""
         with self._lock:

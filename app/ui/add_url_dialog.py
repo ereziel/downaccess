@@ -1,3 +1,5 @@
+from urllib.parse import urlparse
+
 import wx
 
 from app.core import speech
@@ -124,7 +126,6 @@ class AddUrlDialog(wx.Dialog):
     def _on_ok(self, _event) -> None:
         urls = self.get_urls()
         if not urls:
-            speech.speak("Veuillez saisir au moins une URL.")
             wx.MessageBox(
                 "Veuillez saisir au moins une URL.",
                 "URL manquante",
@@ -133,6 +134,23 @@ class AddUrlDialog(wx.Dialog):
             )
             self.txt_urls.SetFocus()
             return
+
+        # Valider que les URLs pointent vers un contenu (pas un domaine nu)
+        for url in urls:
+            parsed = urlparse(url if "://" in url else f"https://{url}")
+            path = parsed.path.rstrip("/")
+            query = parsed.query
+            if not path and not query:
+                wx.MessageBox(
+                    f"L'URL « {url} » semble pointer vers la page d'accueil d'un site "
+                    "et non vers une vidéo.\n\n"
+                    "Copiez l'URL complète d'une vidéo spécifique.",
+                    "URL invalide",
+                    wx.OK | wx.ICON_WARNING,
+                    self,
+                )
+                self.txt_urls.SetFocus()
+                return
 
         # Manuel + plusieurs URLs → forcer Auto
         if self.get_format_choice() == FORMAT_MANUAL and len(urls) > 1:

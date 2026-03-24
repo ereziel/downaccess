@@ -86,7 +86,7 @@ final class DownAccessContactHandler
 
     private function sendMail(array $p): void
     {
-        $smtpPass = getenv(self::SMTP_PASSWORD_ENV) ?: '';
+        $smtpPass = trim(getenv(self::SMTP_PASSWORD_ENV) ?: '', '" ');
         if ($smtpPass === '') {
             throw new PHPMailerException('SMTP password missing.');
         }

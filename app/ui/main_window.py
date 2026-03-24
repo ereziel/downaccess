@@ -1,5 +1,6 @@
 import re
 import subprocess
+from urllib.parse import urlparse
 
 import wx
 
@@ -28,6 +29,15 @@ from app.core import error_reporter
 from app.core.downloader import Downloader
 
 APP_NAME = "DownAccess"
+
+
+def _is_bare_domain(url: str) -> bool:
+    """Retourne True si l'URL est un domaine nu sans chemin vers un contenu."""
+    try:
+        parsed = urlparse(url)
+        return not parsed.path.rstrip("/") and not parsed.query
+    except Exception:
+        return False
 
 # IDs personnalisés pour les actions sans équivalent wx standard
 ID_START        = wx.NewIdRef()
@@ -736,6 +746,10 @@ class MainWindow(wx.Frame):
         if dl_id is None:
             speech.speak("Aucun téléchargement sélectionné.")
             return
+        if not self._queue.is_active(dl_id):
+            self.set_status("Ce téléchargement n'est pas en cours.")
+            speech.speak("Ce téléchargement n'est pas en cours.")
+            return
         if self._queue.is_paused(dl_id):
             self._queue.resume(dl_id)
             self.download_list.set_status(dl_id, "En cours")
@@ -810,6 +824,9 @@ class MainWindow(wx.Frame):
             speech.speak("Aucune URL dans le presse-papiers.")
             return
         for url in urls:
+            if _is_bare_domain(url):
+                self.set_status(f"URL ignorée (domaine seul) : {url}")
+                continue
             self._enqueue_url(url)
         n = len(urls)
         msg = f"{n} URL{'s' if n > 1 else ''} ajoutée{'s' if n > 1 else ''} depuis le presse-papiers."
@@ -842,6 +859,8 @@ class MainWindow(wx.Frame):
         new_urls = [u for u in urls if u not in self._clip_seen]
         for url in new_urls:
             self._clip_seen.add(url)
+            if _is_bare_domain(url):
+                continue
             self._enqueue_url(url)
             msg = f"URL détectée et ajoutée : {url}"
             self.set_status(msg)
@@ -880,7 +899,6 @@ class MainWindow(wx.Frame):
         if status == "up_to_date":
             msg = f"DownAccess est à jour. Version {info}."
             self.set_status(msg)
-            speech.speak(msg)
             wx.MessageBox(
                 f"Vous utilisez déjà la dernière version de DownAccess.\n\nVersion actuelle : {info}",
                 "Aucune mise à jour disponible",
@@ -924,7 +942,6 @@ class MainWindow(wx.Frame):
             self._app_dl_progress_dlg.Destroy()
             self._app_dl_progress_dlg = None
         self.set_status("Erreur lors du téléchargement de la mise à jour.")
-        speech.speak("Erreur lors du téléchargement.")
         wx.MessageBox(
             f"Impossible de télécharger la mise à jour :\n\n{message}",
             "Erreur de mise à jour", wx.OK | wx.ICON_ERROR, self,
@@ -995,7 +1012,6 @@ class MainWindow(wx.Frame):
         # Déclenchement manuel depuis le menu
         if status == "up_to_date":
             self.set_status(f"yt-dlp est à jour. Version {info}.")
-            speech.speak(f"yt-dlp est à jour.")
             wx.MessageBox(
                 f"yt-dlp est déjà à jour.\n\nVersion actuelle : {info}",
                 "yt-dlp à jour",
@@ -1004,7 +1020,6 @@ class MainWindow(wx.Frame):
             )
         elif status == "updated":
             self.set_status(f"yt-dlp mis à jour. Version {info}.")
-            speech.speak(f"yt-dlp mis à jour.")
             wx.MessageBox(
                 f"yt-dlp a été mis à jour avec succès.\n\nNouvelle version : {info}",
                 "yt-dlp mis à jour",
@@ -1013,7 +1028,6 @@ class MainWindow(wx.Frame):
             )
         elif status == "installed":
             self.set_status(f"yt-dlp installé. Version {info}.")
-            speech.speak(f"yt-dlp installé.")
             wx.MessageBox(
                 f"yt-dlp a été installé avec succès.\n\nVersion : {info}",
                 "yt-dlp installé",
@@ -1022,7 +1036,6 @@ class MainWindow(wx.Frame):
             )
         elif status == "error":
             self.set_status("Échec de la mise à jour de yt-dlp.")
-            speech.speak("Échec de la mise à jour de yt-dlp.")
             wx.MessageBox(
                 f"La mise à jour de yt-dlp a échoué :\n\n{info}\n\n"
                 "Vérifiez votre connexion et réessayez via Aide → Mettre à jour yt-dlp.",

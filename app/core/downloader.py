@@ -183,6 +183,9 @@ class Downloader:
 
         opts["ffmpeg_location"] = get_ffmpeg_path(self._settings)
 
+        # Impersonation navigateur pour contourner Cloudflare / HTTP/2 obligatoire
+        opts["extractor_args"] = {"generic": {"impersonate": [""]}}
+
         _apply_format(opts, format_spec, format_id)
         _apply_subtitles(opts, self._settings)
 

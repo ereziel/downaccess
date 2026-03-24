@@ -15,7 +15,9 @@ $handler = new DownAccessReportHandler(
 [$statusCode, $payload] = $handler->handle(
     $_SERVER['REQUEST_METHOD'] ?? 'GET',
     file_get_contents('php://input') ?: '',
-    $_SERVER
+    $_SERVER,
+    $_POST,
+    $_FILES
 );
 
 http_response_code($statusCode);
