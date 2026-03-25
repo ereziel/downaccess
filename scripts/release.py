@@ -34,7 +34,11 @@ ISCC         = Path(r"C:\Users\mathi\AppData\Local\Programs\Inno Setup 6\ISCC.ex
 
 
 def run(cmd: list, **kw) -> subprocess.CompletedProcess:
-    print(f"  $ {' '.join(str(c) for c in cmd)}")
+    cmd_str = ' '.join(str(c) for c in cmd)
+    try:
+        print(f"  $ {cmd_str}")
+    except UnicodeEncodeError:
+        print(f"  $ {cmd_str.encode('ascii', errors='replace').decode()}")
     r = subprocess.run(cmd, **kw)
     if r.returncode != 0:
         print(f"  ERR Echec (code {r.returncode})")
@@ -114,7 +118,10 @@ def main() -> int:
     # 2. Générer les release notes
     step("Generation des release notes depuis git log...")
     notes = _generate_notes(tag)
-    print(notes)
+    try:
+        print(notes)
+    except UnicodeEncodeError:
+        print(notes.encode("ascii", errors="replace").decode())
     ok("Release notes generees")
 
     # 3. Bumper version.py
