@@ -121,10 +121,11 @@ class MainWindow(wx.Frame):
     # ------------------------------------------------------------------
 
     def _init_clipboard(self) -> None:
-        self._clip_last: str = ""         # dernier contenu détecté
         self._clip_seen: set[str] = set() # URLs déjà ajoutées via surveillance
         self._clip_timer = wx.Timer(self)
         self.Bind(wx.EVT_TIMER, self._on_clip_tick, self._clip_timer)
+        # Ignorer le contenu actuel du presse-papiers au démarrage
+        self._clip_last: str = _clipboard_text()
         # Restaurer l'état de surveillance depuis les préférences
         if self.settings.get("clipboard_monitor", False):
             self.mi_clip_toggle.Check(True)
@@ -633,7 +634,7 @@ class MainWindow(wx.Frame):
 
     def _on_uge(self, _event) -> None:
         # Dialogue d'explication à la première utilisation
-        if not self._settings.get("_uge_intro_shown"):
+        if not self.settings.get("_uge_intro_shown"):
             wx.MessageBox(
                 "L'extraction guidée ouvre votre navigateur (Chrome, Edge ou Brave) "
                 "à côté de DownAccess.\n\n"
@@ -644,8 +645,8 @@ class MainWindow(wx.Frame):
                 wx.OK | wx.ICON_INFORMATION,
                 self,
             )
-            self._settings["_uge_intro_shown"] = True
-            cfg.save(self._settings)
+            self.settings["_uge_intro_shown"] = True
+            cfg.save(self.settings)
 
         dlg = UGEDialog(
             self,
@@ -656,7 +657,7 @@ class MainWindow(wx.Frame):
 
     def _on_login(self, _event) -> None:
         # Dialogue d'explication à la première utilisation
-        if not self._settings.get("_login_intro_shown"):
+        if not self.settings.get("_login_intro_shown"):
             wx.MessageBox(
                 "Cette fonction ouvre votre navigateur pour vous connecter à un site.\n\n"
                 "Vos cookies de connexion seront sauvegardés et utilisés par DownAccess\n"
@@ -666,8 +667,8 @@ class MainWindow(wx.Frame):
                 wx.OK | wx.ICON_INFORMATION,
                 self,
             )
-            self._settings["_login_intro_shown"] = True
-            cfg.save(self._settings)
+            self.settings["_login_intro_shown"] = True
+            cfg.save(self.settings)
 
         dlg = LoginDialog(self)
         dlg.Show()
