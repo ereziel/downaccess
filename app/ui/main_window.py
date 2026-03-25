@@ -635,8 +635,9 @@ class MainWindow(wx.Frame):
         # Dialogue d'explication à la première utilisation
         if not self._settings.get("_uge_intro_shown"):
             wx.MessageBox(
-                "L'extraction guidée ouvre un vrai navigateur Chrome à côté de DownAccess.\n\n"
-                "Naviguez sur le site et lancez la vidéo dans Chrome.\n"
+                "L'extraction guidée ouvre votre navigateur (Chrome, Edge ou Brave) "
+                "à côté de DownAccess.\n\n"
+                "Naviguez sur le site et lancez la vidéo dans le navigateur.\n"
                 "Les médias détectés apparaîtront dans la fenêtre DownAccess.\n\n"
                 "Vous pourrez ensuite les ajouter à la file de téléchargement.",
                 "Extraction guidée — Comment ça marche",
@@ -657,10 +658,10 @@ class MainWindow(wx.Frame):
         # Dialogue d'explication à la première utilisation
         if not self._settings.get("_login_intro_shown"):
             wx.MessageBox(
-                "Cette fonction ouvre un navigateur Chrome pour vous connecter à un site.\n\n"
+                "Cette fonction ouvre votre navigateur pour vous connecter à un site.\n\n"
                 "Vos cookies de connexion seront sauvegardés et utilisés par DownAccess\n"
                 "pour télécharger du contenu protégé (abonnements, comptes premium).\n\n"
-                "Activez ensuite l'option dans Préférences → Réseau → Cookies de Chrome.",
+                "Activez ensuite l'option dans Préférences → Réseau → Cookies.",
                 "Connexion à un site — Comment ça marche",
                 wx.OK | wx.ICON_INFORMATION,
                 self,

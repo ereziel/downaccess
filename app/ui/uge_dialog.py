@@ -14,6 +14,7 @@ import urllib.request
 import wx
 
 from app.core import speech
+from app.core.browser import find_browser, browser_name
 
 _log = logging.getLogger("downaccess.uge")
 
@@ -301,21 +302,35 @@ class UGEDialog(wx.Frame):
     # ------------------------------------------------------------------
 
     def _ensure_browser(self) -> bool:
-        """Lance le navigateur Chrome si pas encore ouvert."""
+        """Lance le navigateur Chromium (Chrome, Edge ou Brave) si pas encore ouvert."""
         if self._page is not None:
             return True
+
+        browser_path = find_browser()
+        if not browser_path:
+            wx.MessageBox(
+                "Aucun navigateur compatible trouvé.\n\n"
+                "Installez Google Chrome, Microsoft Edge ou Brave.",
+                "Erreur — Extraction guidée",
+                wx.OK | wx.ICON_ERROR,
+                self,
+            )
+            return False
+
         try:
             from DrissionPage import ChromiumPage, ChromiumOptions
             co = ChromiumOptions()
+            co.set_browser_path(browser_path)
             co.auto_port()
             self._page = ChromiumPage(co)
+            self._browser_name = browser_name(browser_path)
             # Écouter toutes les requêtes réseau (filtrage côté Python)
             self._page.listen.start('')
             return True
         except Exception as exc:
-            _log.error("Impossible d'ouvrir Chrome : %s", exc)
+            _log.error("Impossible d'ouvrir le navigateur : %s", exc)
             wx.MessageBox(
-                f"Impossible d'ouvrir le navigateur Chrome.\n\n{exc}",
+                f"Impossible d'ouvrir le navigateur.\n\n{exc}",
                 "Erreur — Extraction guidée",
                 wx.OK | wx.ICON_ERROR,
                 self,

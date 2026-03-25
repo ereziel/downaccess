@@ -10,6 +10,7 @@ import threading
 import wx
 
 from app.core import speech
+from app.core.browser import find_browser, browser_name
 
 _log = logging.getLogger("downaccess.login")
 
@@ -34,7 +35,7 @@ class LoginDialog(wx.Dialog):
 
         speech.speak(
             "Connexion à un site. "
-            "Saisissez l'adresse et connectez-vous dans Chrome."
+            "Saisissez l'adresse et connectez-vous dans le navigateur."
         )
 
     def _build_ui(self) -> None:
@@ -50,7 +51,7 @@ class LoginDialog(wx.Dialog):
             name="Adresse du site",
         )
         self.txt_url.SetHint("https://www.youtube.com")
-        self.btn_go = wx.Button(panel, label="Ouvrir dans Chrome", name="Ouvrir dans Chrome")
+        self.btn_go = wx.Button(panel, label="Ouvrir", name="Ouvrir dans le navigateur")
         row.Add(lbl_url, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 6)
         row.Add(self.txt_url, 1, wx.EXPAND | wx.RIGHT, 6)
         row.Add(self.btn_go, 0)
@@ -59,7 +60,7 @@ class LoginDialog(wx.Dialog):
         # Info
         self.lbl_status = wx.StaticText(
             panel,
-            label="Entrez l'adresse du site et connectez-vous dans le navigateur Chrome.\n"
+            label="Entrez l'adresse du site et connectez-vous dans le navigateur.\n"
                   "Vos cookies seront sauvegardés automatiquement.",
         )
         sizer.Add(self.lbl_status, 1, wx.EXPAND | wx.ALL, 8)
@@ -90,27 +91,36 @@ class LoginDialog(wx.Dialog):
 
         def open_browser():
             try:
+                bp = find_browser()
+                if not bp:
+                    wx.CallAfter(self._on_browser_error,
+                                 "Aucun navigateur compatible trouvé.\n"
+                                 "Installez Google Chrome, Microsoft Edge ou Brave.")
+                    return
                 from DrissionPage import ChromiumPage, ChromiumOptions
                 co = ChromiumOptions()
+                co.set_browser_path(bp)
                 co.auto_port()
                 self._page = ChromiumPage(co)
+                self._browser_name = browser_name(bp)
                 self._page.get(url)
                 title = self._page.title
                 wx.CallAfter(self._on_browser_ready, title)
             except Exception as exc:
-                _log.error("Impossible d'ouvrir Chrome : %s", exc)
+                _log.error("Impossible d'ouvrir le navigateur : %s", exc)
                 wx.CallAfter(self._on_browser_error, str(exc))
 
         threading.Thread(target=open_browser, daemon=True).start()
 
     def _on_browser_ready(self, title: str) -> None:
+        name = getattr(self, "_browser_name", "Le navigateur")
         self.lbl_status.SetLabel(
-            f"Chrome est ouvert sur : {title}\n\n"
-            "Connectez-vous dans Chrome, puis fermez cette fenêtre.\n"
+            f"{name} est ouvert sur : {title}\n\n"
+            f"Connectez-vous dans {name}, puis fermez cette fenêtre.\n"
             "Vos cookies seront conservés pour les prochains téléchargements."
         )
         self.btn_go.Enable()
-        speech.speak("Chrome est ouvert. Connectez-vous puis fermez cette fenêtre.")
+        speech.speak(f"{name} est ouvert. Connectez-vous puis fermez cette fenêtre.")
 
     def _on_browser_error(self, error: str) -> None:
         self.btn_go.Enable()
