@@ -35,7 +35,8 @@ class LoginDialog(wx.Dialog):
 
         speech.speak(
             "Connexion à un site. "
-            "Saisissez l'adresse et connectez-vous dans le navigateur."
+            "Saisissez l'adresse et connectez-vous dans le navigateur. "
+            "Note : les contenus protégés par DRM (Netflix, Disney+, Prime Video) ne sont pas pris en charge.",
         )
 
     def _build_ui(self) -> None:
@@ -61,7 +62,8 @@ class LoginDialog(wx.Dialog):
         self.lbl_status = wx.StaticText(
             panel,
             label="Entrez l'adresse du site et connectez-vous dans le navigateur.\n"
-                  "Vos cookies seront sauvegardés automatiquement.",
+                  "Vos cookies seront sauvegardés automatiquement.\n\n"
+                  "Note : les contenus protégés par DRM (Netflix, Disney+, Prime Video) ne sont pas pris en charge.",
         )
         sizer.Add(self.lbl_status, 1, wx.EXPAND | wx.ALL, 8)
 
