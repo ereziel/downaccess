@@ -48,12 +48,8 @@ class UpdateDialog(wx.Dialog):
         self.CentreOnParent()
 
         # Focus sur les notes (contenu avant bouton — règle projet)
+        self._txt_notes.SetInsertionPoint(0)
         self._txt_notes.SetFocus()
-
-        speech.speak(
-            f"Mise à jour disponible. DownAccess {new_version} est disponible. "
-            f"Appuyez sur Tab pour accéder aux boutons."
-        )
 
     def _build_ui(self, new_version: str) -> None:
         sizer = wx.BoxSizer(wx.VERTICAL)

@@ -1,4 +1,4 @@
-# Nouveautés de la version 0.1.4
+# Nouveautés de la version 0.1.5
 
 ## Connexion aux sites protégés
 
@@ -9,6 +9,11 @@ Vous pouvez maintenant vous connecter à vos comptes (YouTube, Crunchyroll, etc.
 ## Extraction guidée améliorée
 
 L'extraction guidée utilise désormais votre vrai navigateur (Chrome, Edge ou Brave) au lieu d'un navigateur intégré. Cela permet de passer les protections de plus de sites. Un message explicatif s'affiche la première fois pour vous guider.
+
+## Accessibilité
+
+- La fenêtre de mise à jour place le focus directement sur les notes de version pour une meilleure lecture avec NVDA.
+- Les dialogues d'extraction guidée et de connexion mentionnent les limitations DRM.
 
 ## Corrections
 
