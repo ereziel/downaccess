@@ -1,45 +1,40 @@
 """
 Dialogue de connexion à un site.
-Ouvre un navigateur WebView2 avec profil persistent pour que l'utilisateur
-se connecte à un service. Les cookies sont sauvegardés automatiquement
-et réutilisés par yt-dlp si l'option est activée dans les préférences.
+Ouvre un vrai navigateur Chrome (via DrissionPage) pour que l'utilisateur
+se connecte à un service. Les cookies sont sauvegardés dans le profil
+Chrome par défaut et réutilisés par yt-dlp.
 """
-import os
-from pathlib import Path
+import logging
+import threading
 
 import wx
-import wx.html2
 
 from app.core import speech
 
+_log = logging.getLogger("downaccess.login")
 
-class LoginDialog(wx.Frame):
+
+class LoginDialog(wx.Dialog):
     """
-    Navigateur simplifié pour se connecter à un site.
-    Partage le même profil WebView2 que l'extraction guidée.
+    Dialogue de connexion. Ouvre Chrome via DrissionPage,
+    l'utilisateur se connecte, puis ferme ce dialogue.
     """
 
     def __init__(self, parent):
-        # Profil WebView2 persistent (partagé avec UGE)
-        profile_dir = Path(os.environ.get("APPDATA", "")) / "DownAccess" / "WebView2Profile"
-        profile_dir.mkdir(parents=True, exist_ok=True)
-        os.environ["WEBVIEW2_USER_DATA_FOLDER"] = str(profile_dir)
-
         super().__init__(
             parent,
             title="Se connecter à un site — DownAccess",
-            style=wx.DEFAULT_FRAME_STYLE,
-            size=(1000, 700),
+            style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER,
+            size=(500, 250),
         )
-
+        self._page = None
         self._build_ui()
         self._bind_events()
         self.Centre()
 
         speech.speak(
-            "Navigateur de connexion ouvert. "
-            "Saisissez l'adresse du site et connectez-vous. "
-            "Vos cookies seront sauvegardés automatiquement."
+            "Connexion à un site. "
+            "Saisissez l'adresse et connectez-vous dans Chrome."
         )
 
     def _build_ui(self) -> None:
@@ -48,28 +43,26 @@ class LoginDialog(wx.Frame):
 
         # Barre d'adresse
         row = wx.BoxSizer(wx.HORIZONTAL)
-        lbl_url = wx.StaticText(panel, label="Adresse :")
+        lbl_url = wx.StaticText(panel, label="Adresse du site :")
         self.txt_url = wx.TextCtrl(
             panel,
             style=wx.TE_PROCESS_ENTER,
             name="Adresse du site",
         )
-        self.btn_go = wx.Button(panel, label="Aller", name="Aller")
+        self.txt_url.SetHint("https://www.youtube.com")
+        self.btn_go = wx.Button(panel, label="Ouvrir dans Chrome", name="Ouvrir dans Chrome")
         row.Add(lbl_url, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 6)
         row.Add(self.txt_url, 1, wx.EXPAND | wx.RIGHT, 6)
         row.Add(self.btn_go, 0)
         sizer.Add(row, 0, wx.EXPAND | wx.ALL, 8)
 
-        # WebView2
-        self.browser = wx.html2.WebView.New(panel, name="Navigateur")
-        sizer.Add(self.browser, 1, wx.EXPAND)
-
         # Info
         self.lbl_status = wx.StaticText(
             panel,
-            label="Connectez-vous au site. Les cookies seront sauvegardés automatiquement.",
+            label="Entrez l'adresse du site et connectez-vous dans le navigateur Chrome.\n"
+                  "Vos cookies seront sauvegardés automatiquement.",
         )
-        sizer.Add(self.lbl_status, 0, wx.ALL, 8)
+        sizer.Add(self.lbl_status, 1, wx.EXPAND | wx.ALL, 8)
 
         # Bouton fermer
         self.btn_close = wx.Button(panel, wx.ID_CLOSE, label="Fermer", name="Fermer")
@@ -79,21 +72,61 @@ class LoginDialog(wx.Frame):
         self.txt_url.SetFocus()
 
     def _bind_events(self) -> None:
-        self.txt_url.Bind(wx.EVT_TEXT_ENTER, self._on_navigate)
-        self.btn_go.Bind(wx.EVT_BUTTON, self._on_navigate)
+        self.txt_url.Bind(wx.EVT_TEXT_ENTER, self._on_go)
+        self.btn_go.Bind(wx.EVT_BUTTON, self._on_go)
         self.btn_close.Bind(wx.EVT_BUTTON, lambda _e: self.Close())
-        self.browser.Bind(wx.html2.EVT_WEBVIEW_NAVIGATED, self._on_navigated)
+        self.Bind(wx.EVT_CLOSE, self._on_close)
 
-    def _on_navigate(self, _event) -> None:
+    def _on_go(self, _event) -> None:
         url = self.txt_url.GetValue().strip()
         if not url:
             return
         if not url.startswith(("http://", "https://")):
             url = "https://" + url
-        self.browser.LoadURL(url)
-        self.lbl_status.SetLabel("Chargement…")
+            self.txt_url.SetValue(url)
 
-    def _on_navigated(self, event) -> None:
-        url = event.GetURL()
-        self.txt_url.SetValue(url)
-        self.lbl_status.SetLabel("Page chargée. Connectez-vous si nécessaire.")
+        self.lbl_status.SetLabel("Ouverture de Chrome...")
+        self.btn_go.Disable()
+
+        def open_browser():
+            try:
+                from DrissionPage import ChromiumPage, ChromiumOptions
+                co = ChromiumOptions()
+                co.auto_port()
+                self._page = ChromiumPage(co)
+                self._page.get(url)
+                title = self._page.title
+                wx.CallAfter(self._on_browser_ready, title)
+            except Exception as exc:
+                _log.error("Impossible d'ouvrir Chrome : %s", exc)
+                wx.CallAfter(self._on_browser_error, str(exc))
+
+        threading.Thread(target=open_browser, daemon=True).start()
+
+    def _on_browser_ready(self, title: str) -> None:
+        self.lbl_status.SetLabel(
+            f"Chrome est ouvert sur : {title}\n\n"
+            "Connectez-vous dans Chrome, puis fermez cette fenêtre.\n"
+            "Vos cookies seront conservés pour les prochains téléchargements."
+        )
+        self.btn_go.Enable()
+        speech.speak("Chrome est ouvert. Connectez-vous puis fermez cette fenêtre.")
+
+    def _on_browser_error(self, error: str) -> None:
+        self.btn_go.Enable()
+        self.lbl_status.SetLabel(f"Erreur : {error}")
+        wx.MessageBox(
+            f"Impossible d'ouvrir Chrome.\n\n{error}",
+            "Erreur",
+            wx.OK | wx.ICON_ERROR,
+            self,
+        )
+
+    def _on_close(self, event) -> None:
+        if self._page:
+            try:
+                self._page.quit()
+            except Exception:
+                pass
+            self._page = None
+        event.Skip()

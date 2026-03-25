@@ -1,39 +1,25 @@
 """
 Extraction Guidée (User Guided Extraction)
 
-L'utilisateur navigue dans un navigateur intégré.
+L'utilisateur navigue dans un vrai navigateur Chrome (via DrissionPage).
 Un script JS intercepte toutes les requêtes XHR/fetch et les éléments
 <video>/<source> pour détecter les URLs de médias en temps réel.
-L'utilisateur joue la vidéo puis ajoute le média détecté à la file.
+La fenêtre DownAccess affiche la liste des médias détectés.
 """
 import json
-import os
+import logging
 import threading
 import urllib.request
-from pathlib import Path
 
 import wx
-import wx.html2
 
 from app.core import speech
+
+_log = logging.getLogger("downaccess.uge")
 
 # ------------------------------------------------------------------
 # Script JS injecté après chaque chargement de page
 # ------------------------------------------------------------------
-
-_F6_SCRIPT = r"""
-(function() {
-    if (window.__da_f6) return;
-    window.__da_f6 = true;
-    document.addEventListener('keydown', function(e) {
-        if (e.key === 'F6' && !e.ctrlKey && !e.altKey && !e.shiftKey) {
-            e.preventDefault();
-            e.stopPropagation();
-            window.location.assign('downaccess://f6');
-        }
-    }, true);
-})();
-"""
 
 _MONITOR_SCRIPT = r"""
 (function() {
@@ -77,26 +63,31 @@ _MONITOR_SCRIPT = r"""
             if (node.currentSrc) addUrl(node.currentSrc);
         }
         if (node.querySelectorAll) {
-            node.querySelectorAll('video,source,audio').forEach(function(el) {
-                if (el.src) addUrl(el.src);
-                if (el.currentSrc) addUrl(el.currentSrc);
-            });
+            var els = node.querySelectorAll('video,source,audio');
+            for (var i = 0; i < els.length; i++) {
+                if (els[i].src) addUrl(els[i].src);
+                if (els[i].currentSrc) addUrl(els[i].currentSrc);
+            }
         }
     }
 
     var observer = new MutationObserver(function(mutations) {
-        mutations.forEach(function(m) {
-            m.addedNodes.forEach(scanNode);
-        });
+        for (var i = 0; i < mutations.length; i++) {
+            var nodes = mutations[i].addedNodes;
+            for (var j = 0; j < nodes.length; j++) {
+                scanNode(nodes[j]);
+            }
+        }
     });
     observer.observe(document.documentElement || document.body,
                      {childList: true, subtree: true});
 
     // Scanner les éléments déjà présents
-    document.querySelectorAll('video,source,audio').forEach(function(el) {
-        if (el.src) addUrl(el.src);
-        if (el.currentSrc) addUrl(el.currentSrc);
-    });
+    var existing = document.querySelectorAll('video,source,audio');
+    for (var k = 0; k < existing.length; k++) {
+        if (existing[k].src) addUrl(existing[k].src);
+        if (existing[k].currentSrc) addUrl(existing[k].currentSrc);
+    }
 })();
 """
 
@@ -105,11 +96,6 @@ _UA_DESKTOP = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
     "AppleWebKit/537.36 (KHTML, like Gecko) "
     "Chrome/124.0.0.0 Safari/537.36"
-)
-_UA_MOBILE = (
-    "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) "
-    "AppleWebKit/605.1.15 (KHTML, like Gecko) "
-    "Version/17.0 Mobile/15E148 Safari/604.1"
 )
 
 
@@ -166,6 +152,19 @@ def _find_media_url(obj) -> str | None:
     return None
 
 
+_MEDIA_EXTENSIONS = (
+    ".mp4", ".m4v", ".webm", ".mkv", ".flv", ".mov",
+    ".m3u8", ".mpd", ".ts",
+    ".mp3", ".aac", ".ogg", ".wav", ".opus", ".m4a",
+)
+
+
+def _is_media_url(url: str) -> bool:
+    """Filtre les URLs réseau pour ne garder que les médias."""
+    low = url.lower().split("?")[0].split("#")[0]
+    return any(low.endswith(ext) for ext in _MEDIA_EXTENSIONS)
+
+
 def _url_type(url: str) -> str:
     low = url.lower().split("?")[0].split("#")[0]
     if ".m3u8" in low:
@@ -184,16 +183,12 @@ def _url_type(url: str) -> str:
 class UGEDialog(wx.Frame):
     """
     Fenêtre d'extraction guidée.
-    Non-modale : l'utilisateur navigue et les médias s'ajoutent en direct.
+    Ouvre un vrai navigateur Chrome (DrissionPage) à côté de la fenêtre
+    DownAccess qui affiche les médias détectés.
     100 % accessible NVDA.
     """
 
     def __init__(self, parent, on_add_url):
-        # Profil WebView2 persistant → cookies conservés entre sessions (Cloudflare, auth…)
-        profile_dir = Path(os.environ.get("APPDATA", "")) / "DownAccess" / "WebView2Profile"
-        profile_dir.mkdir(parents=True, exist_ok=True)
-        os.environ["WEBVIEW2_USER_DATA_FOLDER"] = str(profile_dir)
-
         super().__init__(
             parent,
             title="Extraction guidée — DownAccess",
@@ -202,18 +197,18 @@ class UGEDialog(wx.Frame):
         self._on_add_url = on_add_url
         self._detected: list[str] = []
         self._poll_timer = wx.Timer(self)
+        self._page = None  # DrissionPage ChromiumPage
 
         self._build_ui()
         self._bind_events()
-        self.SetMinSize((900, 580))
-        self.Maximize()
+        self.SetSize((500, 600))
+        self.Centre()
 
         speech.speak(
             "Extraction guidée ouverte. "
             "Saisissez une URL et appuyez sur Entrée pour naviguer. "
-            "Lancez la vidéo sur la page. "
-            "Appuyez sur F6 pour basculer vers la liste des médias. "
-            "Utilisez Tab pour naviguer entre les boutons et appuyez sur Entrée pour les activer.",
+            "Lancez la vidéo dans le navigateur Chrome qui s'est ouvert. "
+            "Les médias détectés apparaîtront dans cette fenêtre.",
         )
 
     # ------------------------------------------------------------------
@@ -222,66 +217,51 @@ class UGEDialog(wx.Frame):
 
     def _build_ui(self) -> None:
         panel = wx.Panel(self)
-        main_sizer = wx.BoxSizer(wx.HORIZONTAL)
-
-        # ---- Partie gauche : navigateur ----
-        left_sizer = wx.BoxSizer(wx.VERTICAL)
+        sizer = wx.BoxSizer(wx.VERTICAL)
 
         # Barre d'adresse
-        addr_panel = wx.Panel(panel)
         addr_sizer = wx.BoxSizer(wx.HORIZONTAL)
-
-        lbl_addr = wx.StaticText(addr_panel, label="Adresse :")
+        lbl_addr = wx.StaticText(panel, label="Adresse :")
         self.txt_url = wx.TextCtrl(
-            addr_panel,
+            panel,
             name="Adresse URL",
             style=wx.TE_PROCESS_ENTER,
         )
         self.txt_url.SetHint("https://www.example.com/video")
-        self.btn_go = wx.Button(addr_panel, label="Aller", name="Aller à l'adresse")
+        self.btn_go = wx.Button(panel, label="Aller", name="Aller à l'adresse")
 
-        lbl_ua = wx.StaticText(addr_panel, label="Mode :")
-        self.choice_ua = wx.Choice(
-            addr_panel,
-            choices=["Bureau", "Mobile (iPhone)"],
-            name="Mode navigateur",
+        addr_sizer.Add(lbl_addr,     0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 6)
+        addr_sizer.Add(self.txt_url, 1, wx.EXPAND | wx.RIGHT, 6)
+        addr_sizer.Add(self.btn_go,  0)
+        sizer.Add(addr_sizer, 0, wx.EXPAND | wx.ALL, 8)
+
+        # Statut
+        self.lbl_status = wx.StaticText(
+            panel,
+            label="Entrez une URL pour ouvrir le navigateur.",
         )
-        self.choice_ua.SetSelection(0)
+        sizer.Add(self.lbl_status, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 8)
 
-        addr_sizer.Add(lbl_addr,       0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT | wx.RIGHT, 6)
-        addr_sizer.Add(self.txt_url,   1, wx.EXPAND | wx.RIGHT, 6)
-        addr_sizer.Add(self.btn_go,    0, wx.RIGHT, 12)
-        addr_sizer.Add(lbl_ua,         0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 4)
-        addr_sizer.Add(self.choice_ua, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 6)
-        addr_panel.SetSizer(addr_sizer)
-
-        # Navigateur
-        self.browser = wx.html2.WebView.New(panel)
-        self.browser.SetName("Navigateur intégré")
-
-        # Statut du navigateur
-        self.lbl_nav_status = wx.StaticText(panel, label="")
-
-        left_sizer.Add(addr_panel,          0, wx.EXPAND | wx.ALL, 6)
-        left_sizer.Add(self.browser,        1, wx.EXPAND)
-        left_sizer.Add(self.lbl_nav_status, 0, wx.EXPAND | wx.LEFT | wx.BOTTOM, 6)
-
-        # ---- Partie droite : médias détectés ----
-        right_sizer = wx.BoxSizer(wx.VERTICAL)
-
+        # Liste des médias détectés
         lbl_detected = wx.StaticText(panel, label="Médias détectés :")
         self.lst_media = wx.ListCtrl(
             panel,
             style=wx.LC_REPORT | wx.LC_SINGLE_SEL | wx.LC_HRULES | wx.BORDER_SUNKEN,
             name="Liste des médias détectés",
         )
-        self.lst_media.InsertColumn(0, "Type",  width=90)
-        self.lst_media.InsertColumn(1, "URL",   width=260)
+        self.lst_media.InsertColumn(0, "Type", width=90)
+        self.lst_media.InsertColumn(1, "URL", width=360)
 
         self.lbl_count = wx.StaticText(panel, label="0 média(s) détecté(s)")
 
+        sizer.Add(lbl_detected,   0, wx.LEFT | wx.RIGHT | wx.TOP, 8)
+        sizer.Add(self.lst_media, 1, wx.EXPAND | wx.ALL, 6)
+        sizer.Add(self.lbl_count, 0, wx.LEFT | wx.BOTTOM, 8)
+
+        # Boutons
+        btn_sizer = wx.BoxSizer(wx.HORIZONTAL)
         self.btn_clear = wx.Button(
-            panel, label="Effacer la liste",
+            panel, label="Effacer",
             name="Effacer la liste des médias détectés",
         )
         self.btn_add = wx.Button(
@@ -291,17 +271,12 @@ class UGEDialog(wx.Frame):
         self.btn_add.Disable()
         self.btn_close = wx.Button(panel, wx.ID_CLOSE, label="Fermer")
 
-        right_sizer.Add(lbl_detected,   0, wx.LEFT | wx.RIGHT | wx.TOP, 8)
-        right_sizer.Add(self.lst_media, 1, wx.EXPAND | wx.ALL, 6)
-        right_sizer.Add(self.lbl_count, 0, wx.LEFT | wx.BOTTOM, 8)
-        right_sizer.Add(self.btn_clear, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 6)
-        right_sizer.Add(self.btn_add,   0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 6)
-        right_sizer.Add(self.btn_close, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 6)
+        btn_sizer.Add(self.btn_clear, 0, wx.RIGHT, 6)
+        btn_sizer.Add(self.btn_add,   1, wx.RIGHT, 6)
+        btn_sizer.Add(self.btn_close, 0)
+        sizer.Add(btn_sizer, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 8)
 
-        main_sizer.Add(left_sizer,  3, wx.EXPAND)
-        main_sizer.Add(right_sizer, 1, wx.EXPAND)
-        panel.SetSizer(main_sizer)
-
+        panel.SetSizer(sizer)
         self.txt_url.SetFocus()
 
     # ------------------------------------------------------------------
@@ -309,53 +284,43 @@ class UGEDialog(wx.Frame):
     # ------------------------------------------------------------------
 
     def _bind_events(self) -> None:
-        self.btn_go.Bind(wx.EVT_BUTTON,           self._on_go)
-        self.txt_url.Bind(wx.EVT_TEXT_ENTER,      self._on_go)
-        self.choice_ua.Bind(wx.EVT_CHOICE,        self._on_ua_change)
-        self.btn_clear.Bind(wx.EVT_BUTTON,        self._on_clear)
-        self.btn_add.Bind(wx.EVT_BUTTON,          self._on_add)
-        self.btn_close.Bind(wx.EVT_BUTTON,        lambda _: self.Close())
-        self.lst_media.Bind(wx.EVT_LIST_ITEM_SELECTED,   self._on_media_select)
+        self.btn_go.Bind(wx.EVT_BUTTON, self._on_go)
+        self.txt_url.Bind(wx.EVT_TEXT_ENTER, self._on_go)
+        self.btn_clear.Bind(wx.EVT_BUTTON, self._on_clear)
+        self.btn_add.Bind(wx.EVT_BUTTON, self._on_add)
+        self.btn_close.Bind(wx.EVT_BUTTON, lambda _: self.Close())
+        self.lst_media.Bind(wx.EVT_LIST_ITEM_SELECTED, self._on_media_select)
         self.lst_media.Bind(wx.EVT_LIST_ITEM_DESELECTED, self._on_media_deselect)
-        self.lst_media.Bind(wx.EVT_LIST_ITEM_ACTIVATED,  self._on_media_activate)
-        # Entrée dans la liste = ajouter à la file (redondant avec ACTIVATED mais plus fiable NVDA)
+        self.lst_media.Bind(wx.EVT_LIST_ITEM_ACTIVATED, self._on_media_activate)
         self.lst_media.Bind(wx.EVT_KEY_DOWN, self._on_list_key)
-        self.browser.Bind(wx.html2.EVT_WEBVIEW_NAVIGATING, self._on_navigating)
-        self.browser.Bind(wx.html2.EVT_WEBVIEW_LOADED,    self._on_page_loaded)
         self.Bind(wx.EVT_TIMER, self._on_poll, self._poll_timer)
         self.Bind(wx.EVT_CLOSE, self._on_close)
-
-        # F6 côté Python : fonctionne quand le focus est hors du WebView
-        _ID_F6 = wx.NewIdRef()
-        accel = wx.AcceleratorTable([
-            (wx.ACCEL_NORMAL, wx.WXK_F6, _ID_F6),
-        ])
-        self.SetAcceleratorTable(accel)
-        self.Bind(wx.EVT_MENU, self._on_f6, id=_ID_F6)
 
     # ------------------------------------------------------------------
     # Navigation
     # ------------------------------------------------------------------
 
-    def _on_f6(self, _event) -> None:
-        """F6 : cycle barre d'adresse → navigateur → liste des médias → barre d'adresse."""
-        focused = self.FindFocus()
-        if focused is self.txt_url or focused is self.btn_go or focused is self.choice_ua:
-            self.browser.SetFocus()
-            speech.speak("Navigateur.", interrupt=True)
-        elif focused is self.browser:
-            if self.lst_media.GetItemCount() > 0:
-                self.lst_media.SetFocus()
-                if self.lst_media.GetFirstSelected() == -1:
-                    self.lst_media.Select(0)
-                    self.lst_media.Focus(0)
-                speech.speak("Liste des médias.", interrupt=True)
-            else:
-                self.txt_url.SetFocus()
-                speech.speak("Barre d'adresse.", interrupt=True)
-        else:
-            self.txt_url.SetFocus()
-            speech.speak("Barre d'adresse.", interrupt=True)
+    def _ensure_browser(self) -> bool:
+        """Lance le navigateur Chrome si pas encore ouvert."""
+        if self._page is not None:
+            return True
+        try:
+            from DrissionPage import ChromiumPage, ChromiumOptions
+            co = ChromiumOptions()
+            co.auto_port()
+            self._page = ChromiumPage(co)
+            # Écouter toutes les requêtes réseau (filtrage côté Python)
+            self._page.listen.start('')
+            return True
+        except Exception as exc:
+            _log.error("Impossible d'ouvrir Chrome : %s", exc)
+            wx.MessageBox(
+                f"Impossible d'ouvrir le navigateur Chrome.\n\n{exc}",
+                "Erreur — Extraction guidée",
+                wx.OK | wx.ICON_ERROR,
+                self,
+            )
+            return False
 
     def _on_go(self, _event) -> None:
         url = self.txt_url.GetValue().strip()
@@ -364,60 +329,74 @@ class UGEDialog(wx.Frame):
         if not url.startswith(("http://", "https://")):
             url = "https://" + url
             self.txt_url.SetValue(url)
-        self.browser.LoadURL(url)
 
-    def _on_navigating(self, event) -> None:
-        url = event.GetURL()
-        # Intercepter la commande F6 envoyée depuis le JS du navigateur
-        if url == "downaccess://f6":
-            event.Veto()
-            self._on_f6(None)
+        if not self._ensure_browser():
             return
+
+        self.lbl_status.SetLabel("Chargement…")
+
+        def navigate():
+            try:
+                self._page.get(url)
+                # Injecter le script de détection de médias
+                self._page.run_js(_MONITOR_SCRIPT)
+                current_url = self._page.url
+                title = self._page.title
+                wx.CallAfter(self._on_page_loaded, current_url, title)
+            except Exception as exc:
+                _log.error("Erreur navigation : %s", exc)
+                wx.CallAfter(
+                    self.lbl_status.SetLabel,
+                    f"Erreur : {exc}",
+                )
+
+        threading.Thread(target=navigate, daemon=True).start()
+
+    def _on_page_loaded(self, url: str, title: str) -> None:
         self.txt_url.SetValue(url)
-        self.lbl_nav_status.SetLabel("Chargement…")
-        event.Skip()
-
-    def _on_page_loaded(self, _event) -> None:
-        # Ne pas injecter les scripts sur about:blank ou pages spéciales
-        try:
-            current_url = self.browser.GetCurrentURL()
-        except Exception:
-            current_url = ""
-        if not current_url or current_url in ("about:blank", "") or current_url.startswith("edge://"):
-            return
-        self.lbl_nav_status.SetLabel("Page chargée — lancez la vidéo pour détecter les médias.")
-        self.browser.RunScript(_F6_SCRIPT)
-        self.browser.RunScript(_MONITOR_SCRIPT)
-        if not self._poll_timer.IsRunning():
-            self._poll_timer.Start(600)
-
-    def _on_ua_change(self, _event) -> None:
-        ua = _UA_MOBILE if self.choice_ua.GetSelection() == 1 else _UA_DESKTOP
-        # Injecter le User-Agent via JS (configurable pour permettre les changements suivants)
-        self.browser.RunScript(
-            f"Object.defineProperty(navigator, 'userAgent', "
-            f"{{get: () => '{ua}', configurable: true}});"
+        self.lbl_status.SetLabel(
+            f"Page chargée : {title}\n"
+            "Lancez la vidéo dans Chrome — les médias seront détectés automatiquement."
         )
-        # Recharger la page pour appliquer le nouveau User-Agent
-        try:
-            current_url = self.browser.GetCurrentURL()
-            if current_url and current_url not in ("about:blank", ""):
-                self.browser.LoadURL(current_url)
-        except Exception:
-            pass
+        if not self._poll_timer.IsRunning():
+            self._poll_timer.Start(1000)
 
     # ------------------------------------------------------------------
     # Polling JS → détection des médias
     # ------------------------------------------------------------------
 
     def _on_poll(self, _event) -> None:
-        try:
-            raw = self.browser.RunScript("JSON.stringify(window.__da_urls || [])")
-            # RunScript retourne (bool, str) ou str selon la version wxPython
-            data = raw[1] if isinstance(raw, tuple) else raw
-            urls = json.loads(data or "[]")
-        except Exception:
+        if self._page is None:
             return
+
+        def poll():
+            try:
+                found_urls = []
+
+                # 1. Requêtes réseau capturées (iframes inclus)
+                for packet in self._page.listen.steps():
+                    url = packet.url if hasattr(packet, 'url') else str(packet)
+                    if url and _is_media_url(url):
+                        found_urls.append(url)
+
+                # 2. Script JS sur la page principale (XHR/fetch/DOM)
+                try:
+                    self._page.run_js(_MONITOR_SCRIPT)
+                    data = self._page.run_js("JSON.stringify(window.__da_urls || [])")
+                    if data:
+                        found_urls.extend(json.loads(data))
+                except Exception:
+                    pass
+
+                current_url = self._page.url
+                wx.CallAfter(self._update_detected, found_urls, current_url)
+            except Exception:
+                pass
+
+        threading.Thread(target=poll, daemon=True).start()
+
+    def _update_detected(self, urls: list, current_url: str) -> None:
+        self.txt_url.SetValue(current_url)
 
         added = 0
         for url in urls:
@@ -472,16 +451,19 @@ class UGEDialog(wx.Frame):
         url = self.lst_media.GetItemText(idx, 1)
         # Normaliser les paramètres de consentement connus
         url = url.replace("accepted=false", "accepted=true")
-        referer = self.browser.GetCurrentURL() or None
-        # Récupérer les cookies non-HttpOnly via JS
+
+        # Récupérer le referer et les cookies depuis Chrome
+        referer = None
         cookies = None
-        try:
-            raw = self.browser.RunScript("document.cookie")
-            val = raw[1] if isinstance(raw, tuple) else raw
-            if val and val.strip():
-                cookies = val.strip()
-        except Exception:
-            pass
+        if self._page:
+            try:
+                referer = self._page.url
+            except Exception:
+                pass
+            try:
+                cookies = self._page.run_js("document.cookie")
+            except Exception:
+                pass
 
         self.btn_add.Disable()
         speech.speak("Résolution de l'URL en cours…", interrupt=False)
@@ -503,4 +485,15 @@ class UGEDialog(wx.Frame):
 
     def _on_close(self, event) -> None:
         self._poll_timer.Stop()
+        # Fermer le navigateur Chrome
+        if self._page:
+            try:
+                self._page.listen.stop()
+            except Exception:
+                pass
+            try:
+                self._page.quit()
+            except Exception:
+                pass
+            self._page = None
         event.Skip()

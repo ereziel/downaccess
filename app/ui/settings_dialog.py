@@ -188,12 +188,12 @@ class SettingsDialog(wx.Dialog):
         # Cookies
         self.chk_cookies = wx.CheckBox(
             page,
-            label="Utiliser les cookies du navigateur intégré (pour le contenu protégé)",
-            name="Utiliser les cookies du navigateur intégré",
+            label="Utiliser les cookies de Chrome (pour le contenu protégé)",
+            name="Utiliser les cookies de Chrome",
         )
         lbl_cookies_hint = wx.StaticText(
             page,
-            label="Connectez-vous via Outils → Se connecter à un site, "
+            label="Connectez-vous d'abord via Outils → Se connecter à un site, "
                   "puis activez cette option.",
         )
         lbl_cookies_hint.SetForegroundColour(wx.SystemSettings.GetColour(wx.SYS_COLOUR_GRAYTEXT))

@@ -80,7 +80,7 @@ def main() -> int:
     proc.terminate()
     ok("L'exe a tourné 4 secondes sans crash")
 
-    print("\n✅ Build OK — prêt pour la release.")
+    print("\nBuild OK — prêt pour la release.")
     print(f"   Exe : {EXE}")
     print(f"   Taille bundle : {size}")
     return 0

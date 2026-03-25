@@ -632,6 +632,20 @@ class MainWindow(wx.Frame):
         speech.speak(msg)
 
     def _on_uge(self, _event) -> None:
+        # Dialogue d'explication à la première utilisation
+        if not self._settings.get("_uge_intro_shown"):
+            wx.MessageBox(
+                "L'extraction guidée ouvre un vrai navigateur Chrome à côté de DownAccess.\n\n"
+                "Naviguez sur le site et lancez la vidéo dans Chrome.\n"
+                "Les médias détectés apparaîtront dans la fenêtre DownAccess.\n\n"
+                "Vous pourrez ensuite les ajouter à la file de téléchargement.",
+                "Extraction guidée — Comment ça marche",
+                wx.OK | wx.ICON_INFORMATION,
+                self,
+            )
+            self._settings["_uge_intro_shown"] = True
+            cfg.save(self._settings)
+
         dlg = UGEDialog(
             self,
             on_add_url=lambda url, referer=None, cookies=None:
@@ -640,6 +654,20 @@ class MainWindow(wx.Frame):
         dlg.Show()
 
     def _on_login(self, _event) -> None:
+        # Dialogue d'explication à la première utilisation
+        if not self._settings.get("_login_intro_shown"):
+            wx.MessageBox(
+                "Cette fonction ouvre un navigateur Chrome pour vous connecter à un site.\n\n"
+                "Vos cookies de connexion seront sauvegardés et utilisés par DownAccess\n"
+                "pour télécharger du contenu protégé (abonnements, comptes premium).\n\n"
+                "Activez ensuite l'option dans Préférences → Réseau → Cookies de Chrome.",
+                "Connexion à un site — Comment ça marche",
+                wx.OK | wx.ICON_INFORMATION,
+                self,
+            )
+            self._settings["_login_intro_shown"] = True
+            cfg.save(self._settings)
+
         dlg = LoginDialog(self)
         dlg.Show()
 
@@ -969,6 +997,16 @@ class MainWindow(wx.Frame):
         self.set_status("Vérification de la version yt-dlp…")
         self.mi_update_ydl.Enable(False)
 
+        # Dialogue avec barre de progression pulsante
+        self._ytdlp_progress_dlg = wx.ProgressDialog(
+            "Mise à jour yt-dlp",
+            "Vérification et mise à jour de yt-dlp en cours…",
+            maximum=100,
+            parent=self,
+            style=wx.PD_APP_MODAL | wx.PD_AUTO_HIDE,
+        )
+        self._ytdlp_progress_dlg.Pulse()
+
         updater.check_and_update(
             on_done=lambda status, info: wx.CallAfter(
                 self.on_ytdlp_update_done, status, info, from_menu=True
@@ -1015,6 +1053,11 @@ class MainWindow(wx.Frame):
         """
         self.mi_update_ydl.Enable(True)
         self._updater_running = False
+
+        # Fermer le dialogue de progression si ouvert
+        if hasattr(self, "_ytdlp_progress_dlg") and self._ytdlp_progress_dlg:
+            self._ytdlp_progress_dlg.Destroy()
+            self._ytdlp_progress_dlg = None
 
         if not from_menu:
             # Démarrage : complètement silencieux, on débloque juste les téléchargements
