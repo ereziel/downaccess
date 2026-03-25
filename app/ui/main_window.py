@@ -640,7 +640,9 @@ class MainWindow(wx.Frame):
                 "à côté de DownAccess.\n\n"
                 "Naviguez sur le site et lancez la vidéo dans le navigateur.\n"
                 "Les médias détectés apparaîtront dans la fenêtre DownAccess.\n\n"
-                "Vous pourrez ensuite les ajouter à la file de téléchargement.",
+                "Vous pourrez ensuite les ajouter à la file de téléchargement.\n\n"
+                "Note : les contenus protégés par DRM (Netflix, Disney+, Prime Video…) "
+                "ne sont pas pris en charge.",
                 "Extraction guidée — Comment ça marche",
                 wx.OK | wx.ICON_INFORMATION,
                 self,
@@ -662,7 +664,9 @@ class MainWindow(wx.Frame):
                 "Cette fonction ouvre votre navigateur pour vous connecter à un site.\n\n"
                 "Vos cookies de connexion seront sauvegardés et utilisés par DownAccess\n"
                 "pour télécharger du contenu protégé (abonnements, comptes premium).\n\n"
-                "Activez ensuite l'option dans Préférences → Réseau → Cookies.",
+                "Activez ensuite l'option dans Préférences → Réseau → Cookies.\n\n"
+                "Note : les contenus protégés par DRM (Netflix, Disney+, Prime Video…) "
+                "ne sont pas pris en charge.",
                 "Connexion à un site — Comment ça marche",
                 wx.OK | wx.ICON_INFORMATION,
                 self,
