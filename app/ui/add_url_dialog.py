@@ -27,12 +27,13 @@ class AddUrlDialog(wx.Dialog):
     100 % accessible NVDA.
     """
 
-    def __init__(self, parent):
+    def __init__(self, parent, default_format: str = "auto"):
         super().__init__(
             parent,
             title="Ajouter des URLs",
             style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER,
         )
+        self._default_format = default_format
         self._build_ui()
         self._bind_events()
         self.SetMinSize((480, 340))
@@ -64,7 +65,12 @@ class AddUrlDialog(wx.Dialog):
             choices=[label for _, label in _FORMAT_CHOICES],
             name="Format de téléchargement",
         )
-        self.choice_fmt.SetSelection(0)
+        # Sélection par défaut selon les préférences (post_processing)
+        default_idx = next(
+            (i for i, (val, _) in enumerate(_FORMAT_CHOICES) if val == self._default_format),
+            0,
+        )
+        self.choice_fmt.SetSelection(default_idx)
 
         # Avertissement "Manuel + plusieurs URLs"
         self.lbl_manual_warn = wx.StaticText(

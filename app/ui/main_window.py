@@ -779,7 +779,10 @@ class MainWindow(wx.Frame):
         dlg.Show()
 
     def _on_add_url(self, _event) -> None:
-        with AddUrlDialog(self) as dlg:
+        default_fmt = self.settings.get("post_processing", "none")
+        if default_fmt == "none":
+            default_fmt = "auto"
+        with AddUrlDialog(self, default_format=default_fmt) as dlg:
             if dlg.ShowModal() != wx.ID_OK:
                 return
             urls       = dlg.get_urls()
@@ -1160,6 +1163,7 @@ class MainWindow(wx.Frame):
                 wx.OK | wx.ICON_ERROR,
                 self,
             )
+        wx.CallAfter(self.download_list.SetFocus)
 
     def _on_app_dl_progress(self, percent: float) -> None:
         self.set_status(f"Téléchargement de la mise à jour… {percent:.0f} %")
@@ -1186,17 +1190,8 @@ class MainWindow(wx.Frame):
 
     def _on_update_ytdlp(self, _event) -> None:
         self.set_status("Vérification de la version yt-dlp…")
+        speech.speak("Vérification en cours.")
         self.mi_update_ydl.Enable(False)
-
-        # Dialogue avec barre de progression pulsante
-        self._ytdlp_progress_dlg = wx.ProgressDialog(
-            "Mise à jour yt-dlp",
-            "Vérification et mise à jour de yt-dlp en cours…",
-            maximum=100,
-            parent=self,
-            style=wx.PD_APP_MODAL | wx.PD_AUTO_HIDE,
-        )
-        self._ytdlp_progress_dlg.Pulse()
 
         updater.check_and_update(
             on_done=lambda status, info: wx.CallAfter(
@@ -1245,11 +1240,6 @@ class MainWindow(wx.Frame):
         self.mi_update_ydl.Enable(True)
         self._updater_running = False
 
-        # Fermer le dialogue de progression si ouvert
-        if hasattr(self, "_ytdlp_progress_dlg") and self._ytdlp_progress_dlg:
-            self._ytdlp_progress_dlg.Destroy()
-            self._ytdlp_progress_dlg = None
-
         if not from_menu:
             # Démarrage : complètement silencieux, on débloque juste les téléchargements
             return
@@ -1288,6 +1278,9 @@ class MainWindow(wx.Frame):
                 wx.OK | wx.ICON_ERROR,
                 self,
             )
+
+        # Remettre le focus sur la liste pour NVDA (déféré pour laisser wx nettoyer les modaux)
+        wx.CallAfter(self.download_list.SetFocus)
 
         # Démarrer les téléchargements mis en attente pendant la mise à jour
         if self._pending_downloads:
