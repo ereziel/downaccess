@@ -213,6 +213,7 @@ class MainWindow(wx.Frame):
             referer=data.get("referer"),
             cookies=data.get("cookies"),
             playlist_title=data.get("playlist_title"),
+            playlist_number=data.get("playlist_number"),
             use_cookies=True,
         )
         label = data.get("format_spec", "auto").upper()
@@ -227,6 +228,7 @@ class MainWindow(wx.Frame):
             "cookies": data.get("cookies"),
             "site": data.get("site", ""),
             "playlist_title": data.get("playlist_title"),
+            "playlist_number": data.get("playlist_number"),
             "use_cookies": True,
         }
         self.set_count(self.download_list.count())
@@ -1008,8 +1010,15 @@ class MainWindow(wx.Frame):
         # Supprimer l'item échoué et relancer
         self.download_list.remove_selected()
         self._dl_data.pop(dl_id, None)
-        self._enqueue_url(data["url"], data["format_spec"], data.get("format_id"),
-                          playlist_title=data.get("playlist_title"))
+        self._enqueue_url(
+            data["url"],
+            data.get("format_spec", "auto"),
+            format_id=data.get("format_id"),
+            referer=data.get("referer"),
+            cookies=data.get("cookies"),
+            playlist_title=data.get("playlist_title"),
+            playlist_number=data.get("playlist_number"),
+        )
         self.set_status("Téléchargement relancé.")
 
     def _on_move_up(self, _event) -> None:

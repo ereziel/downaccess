@@ -1,22 +1,27 @@
-# Nouveautés de la version 0.1.5
+# Nouveautés de la version 0.1.6
 
-## Connexion aux sites protégés
+## Playlists
 
-Vous pouvez maintenant vous connecter à vos comptes (YouTube, Crunchyroll, etc.) directement depuis DownAccess. Allez dans **Outils → Se connecter à un site**, connectez-vous dans le navigateur qui s'ouvre, puis activez l'option cookies dans les préférences. DownAccess pourra ensuite télécharger vos contenus premium et réservés aux abonnés.
+- **Choix vidéo ou playlist** : quand vous collez un lien contenant une vidéo et une playlist (ex. YouTube), DownAccess vous demande ce que vous voulez télécharger.
+- **Numérotation des fichiers** : lors du téléchargement d'une playlist, vous pouvez choisir entre la numérotation originale (position dans la playlist), séquentielle (1, 2, 3...) ou aucune numérotation. Votre choix est mémorisé pour la fois suivante.
 
-**Note** : cette fonctionnalité ne permet pas de contourner les protections DRM (Netflix, Disney+, Amazon Prime Video, etc.).
+## Cookies simplifiés
 
-## Extraction guidée améliorée
+- Fini le réglage global dans les préférences. Maintenant, si un téléchargement échoue, DownAccess vous propose de **réessayer avec les cookies de votre navigateur** (Chrome, Edge ou Brave).
+- Si ça fonctionne, il vous demande si vous voulez mémoriser ce site. Les prochains téléchargements sur ce site utiliseront automatiquement vos cookies.
+- Vous pouvez gérer la liste des sites mémorisés dans **Préférences > Réseau**.
 
-L'extraction guidée utilise désormais votre vrai navigateur (Chrome, Edge ou Brave) au lieu d'un navigateur intégré. Cela permet de passer les protections de plus de sites. Un message explicatif s'affiche la première fois pour vous guider.
+## Téléchargement plus rapide
 
-## Accessibilité
+- Nouvelle option **Fragments en parallèle** dans les préférences : permet de télécharger plusieurs parties d'une vidéo en même temps pour accélérer le téléchargement.
 
-- La fenêtre de mise à jour place le focus directement sur les notes de version pour une meilleure lecture avec NVDA.
-- Les dialogues d'extraction guidée et de connexion mentionnent les limitations DRM.
+## Gestion de la liste
+
+- **Suppr** : supprime l'élément sélectionné de la liste (demande confirmation si le téléchargement est en cours).
+- **Maj+Suppr** : vide toute la liste d'un coup.
+- Aucun fichier n'est supprimé du disque.
 
 ## Corrections
 
-- **Plus de voix Windows inattendue** : la synthèse vocale ne se déclenche plus si vous n'utilisez pas de lecteur d'écran (NVDA ou JAWS).
-- **Presse-papiers au démarrage** : si la surveillance du presse-papiers est activée, le contenu déjà copié avant le lancement n'est plus détecté comme nouvelle URL.
-- **Mise à jour yt-dlp** : une barre de progression visuelle s'affiche pendant la mise à jour au lieu d'une annonce vocale.
+- Le User-Agent personnalisé dans les préférences est maintenant correctement pris en compte.
+- Correction d'un crash lors de l'annulation d'un téléchargement.
