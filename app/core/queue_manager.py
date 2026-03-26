@@ -4,8 +4,6 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Callable
 
-import wx
-
 from app.core.downloader import Downloader, DownloadError, DownloadInfo, DownloadProgress
 
 _log = logging.getLogger("downaccess.queue")
@@ -26,25 +24,27 @@ class QueueItem:
     pause_event: threading.Event = field(default_factory=threading.Event)
 
 
-# Callbacks UI (toujours appelés via wx.CallAfter)
+# Callbacks UI
 OnInfoReady     = Callable[[DownloadInfo], None]
 OnProgress      = Callable[[DownloadProgress], None]
 OnComplete      = Callable[[str], None]           # download_id
 OnError         = Callable[[str, str], None]      # download_id, message
 OnPlaylist      = Callable[[DownloadInfo], None]  # info avec is_playlist=True
 OnWarning       = Callable[[str, str], None]      # download_id, message
+PostToUI        = Callable[..., None]             # ex: wx.CallAfter
 
 
 class QueueManager:
     """
     Gère la file de téléchargement.
     - Les téléchargements tournent dans des threads daemon séparés.
-    - La communication vers l'UI passe TOUJOURS par wx.CallAfter.
+    - La communication vers l'UI passe par post_to_ui (injecté par l'appelant).
     """
 
     def __init__(
         self,
         settings: dict,
+        post_to_ui:  PostToUI,
         on_info:     OnInfoReady,
         on_progress: OnProgress,
         on_complete: OnComplete,
@@ -53,6 +53,7 @@ class QueueManager:
         on_warning:  OnWarning  | None = None,
     ):
         self._settings    = settings
+        self._post        = post_to_ui
         self._on_info     = on_info
         self._on_progress = on_progress
         self._on_complete = on_complete
@@ -195,13 +196,13 @@ class QueueManager:
             if info.is_playlist:
                 # Déléguer la gestion de la playlist à l'UI
                 _log.info("Playlist détectée id=%s url=%s", dl_id, item.url)
-                wx.CallAfter(self._on_playlist or self._on_info, info)
+                self._post(self._on_playlist or self._on_info, info)
                 self._finish(dl_id)
                 return
-            wx.CallAfter(self._on_info, info)
+            self._post(self._on_info, info)
         except DownloadError as exc:
             _log.error("Erreur fetch_info id=%s — %s", dl_id, exc)
-            wx.CallAfter(self._on_error, dl_id, str(exc))
+            self._post(self._on_error, dl_id, str(exc))
             self._finish(dl_id)
             return
 
@@ -212,7 +213,7 @@ class QueueManager:
 
         # 2. Téléchargement
         def on_progress(prog: DownloadProgress) -> None:
-            wx.CallAfter(self._on_progress, prog)
+            self._post(self._on_progress, prog)
 
         try:
             warning = dl.download(
@@ -227,13 +228,13 @@ class QueueManager:
                 use_cookies=item.use_cookies,
             )
             if warning and self._on_warning:
-                wx.CallAfter(self._on_warning, dl_id, warning)
+                self._post(self._on_warning, dl_id, warning)
             _log.info("Terminé avec succès id=%s url=%s", dl_id, item.url)
-            wx.CallAfter(self._on_complete, dl_id)
+            self._post(self._on_complete, dl_id)
         except DownloadError as exc:
             if not item.stop_event.is_set():
                 _log.error("Échec téléchargement id=%s — %s", dl_id, exc)
-                wx.CallAfter(self._on_error, dl_id, str(exc))
+                self._post(self._on_error, dl_id, str(exc))
             else:
                 _log.info("Annulé pendant téléchargement id=%s", dl_id)
 

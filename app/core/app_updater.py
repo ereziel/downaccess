@@ -100,12 +100,14 @@ def check_for_update(on_done) -> None:
 # Téléchargement et installation
 # ---------------------------------------------------------------------------
 
-def download_and_install(new_version: str, on_progress, on_error) -> None:
+def download_and_install(new_version: str, on_progress, on_error,
+                         on_quit=None) -> None:
     """
     Télécharge l'installeur et le lance.
 
     on_progress(percent: float)  — progression 0-100
     on_error(message: str)       — appelé si échec ; l'app NE se ferme PAS
+    on_quit()                    — appelé pour fermer l'app après lancement installeur
     """
     def _run():
         tmp_path  = os.path.join(tempfile.gettempdir(), ASSET_NAME + ".tmp")
@@ -175,19 +177,7 @@ def download_and_install(new_version: str, on_progress, on_error) -> None:
             return
 
         # Tout est bon → fermer l'app proprement
-        import wx as _wx
-        _wx.CallAfter(_quit_app)
+        if on_quit:
+            on_quit()
 
     threading.Thread(target=_run, daemon=True).start()
-
-
-def _quit_app() -> None:
-    """Ferme l'app proprement depuis le thread UI."""
-    import wx as _wx
-    app = _wx.GetApp()
-    if app:
-        top = app.GetTopWindow()
-        if top:
-            top.Close()
-        else:
-            app.ExitMainLoop()

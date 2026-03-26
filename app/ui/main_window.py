@@ -143,6 +143,7 @@ class MainWindow(wx.Frame):
         self._pending_downloads: list[tuple[str, str, str | None, str | None]] = []
         self._queue = QueueManager(
             settings=self.settings,
+            post_to_ui=wx.CallAfter,
             on_info=self._on_dl_info,
             on_progress=self._on_dl_progress,
             on_complete=self._on_dl_complete,
@@ -1143,6 +1144,7 @@ class MainWindow(wx.Frame):
                     new_version=info,
                     on_progress=lambda pct: wx.CallAfter(self._on_app_dl_progress, pct),
                     on_error=lambda msg: wx.CallAfter(self._on_app_dl_error, msg),
+                    on_quit=lambda: wx.CallAfter(self.Close),
                 )
             else:
                 self.set_status(f"Mise à jour DownAccess {info} reportée.")
