@@ -93,6 +93,17 @@ class SettingsDialog(wx.Dialog):
         self.spin_concurrent = wx.SpinCtrl(page, min=1, max=10, initial=2,
                                            name="Téléchargements simultanés")
 
+        # Fragments en parallèle
+        lbl_fragments = wx.StaticText(page, label="Fragments en parallèle par téléchargement :")
+        self.spin_fragments = wx.SpinCtrl(page, min=1, max=16, initial=1,
+                                          name="Fragments en parallèle")
+        lbl_fragments_hint = wx.StaticText(
+            page,
+            label="Accélère le téléchargement en utilisant plusieurs connexions. "
+                  "1 = désactivé.",
+        )
+        lbl_fragments_hint.SetForegroundColour(wx.SystemSettings.GetColour(wx.SYS_COLOUR_GRAYTEXT))
+
         # Action après téléchargement
         lbl_after = wx.StaticText(page, label="Action après téléchargement :")
         self.chk_open_folder = wx.CheckBox(page,
@@ -109,6 +120,9 @@ class SettingsDialog(wx.Dialog):
         sizer.Add(row_folder,        0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 6)
         sizer.Add(lbl_concurrent,    0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 12)
         sizer.Add(self.spin_concurrent, 0, wx.LEFT | wx.RIGHT | wx.TOP, 6)
+        sizer.Add(lbl_fragments,     0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 12)
+        sizer.Add(self.spin_fragments,  0, wx.LEFT | wx.RIGHT | wx.TOP, 6)
+        sizer.Add(lbl_fragments_hint,   0, wx.LEFT | wx.RIGHT | wx.TOP, 4)
         sizer.Add(lbl_after,         0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 12)
         sizer.Add(self.chk_open_folder,       0, wx.LEFT | wx.RIGHT | wx.TOP, 6)
         sizer.Add(self.chk_organize,          0, wx.LEFT | wx.RIGHT | wx.TOP, 6)
@@ -185,18 +199,22 @@ class SettingsDialog(wx.Dialog):
         lbl_ua = wx.StaticText(page, label="User-Agent personnalisé (laisser vide = défaut) :")
         self.txt_useragent = wx.TextCtrl(page, name="User-Agent")
 
-        # Cookies
-        self.chk_cookies = wx.CheckBox(
+        # Sites avec cookies
+        lbl_cookie_sites = wx.StaticText(
             page,
-            label="Utiliser les cookies de Chrome (pour le contenu protégé)",
-            name="Utiliser les cookies de Chrome",
+            label="Sites utilisant les cookies du navigateur :",
         )
+        self.lst_cookie_sites = wx.ListBox(page, size=(-1, 80),
+                                           name="Sites avec cookies")
         lbl_cookies_hint = wx.StaticText(
             page,
-            label="Connectez-vous d'abord via Outils → Se connecter à un site, "
-                  "puis activez cette option.",
+            label="Les sites sont ajoutés automatiquement quand vous utilisez "
+                  "\"Réessayer avec les cookies\" après une erreur.",
         )
         lbl_cookies_hint.SetForegroundColour(wx.SystemSettings.GetColour(wx.SYS_COLOUR_GRAYTEXT))
+        self.btn_remove_cookie_site = wx.Button(page, label="Supprimer le site sélectionné",
+                                                name="Supprimer le site sélectionné")
+        self.btn_remove_cookie_site.Bind(wx.EVT_BUTTON, self._on_remove_cookie_site)
 
         sizer.Add(lbl_proxy_http,      0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 12)
         sizer.Add(self.txt_proxy_http,  0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 6)
@@ -204,8 +222,10 @@ class SettingsDialog(wx.Dialog):
         sizer.Add(self.txt_proxy_socks, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 6)
         sizer.Add(lbl_ua,              0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 12)
         sizer.Add(self.txt_useragent,   0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 6)
-        sizer.Add(self.chk_cookies,     0, wx.LEFT | wx.RIGHT | wx.TOP, 12)
-        sizer.Add(lbl_cookies_hint,     0, wx.LEFT | wx.RIGHT | wx.TOP, 12)
+        sizer.Add(lbl_cookie_sites,     0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 12)
+        sizer.Add(self.lst_cookie_sites, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 6)
+        sizer.Add(lbl_cookies_hint,     0, wx.LEFT | wx.RIGHT | wx.TOP, 4)
+        sizer.Add(self.btn_remove_cookie_site, 0, wx.LEFT | wx.RIGHT | wx.TOP, 6)
 
         page.SetSizer(sizer)
         return page
@@ -257,6 +277,7 @@ class SettingsDialog(wx.Dialog):
         # Général
         self.txt_folder.SetValue(s.get("download_folder", ""))
         self.spin_concurrent.SetValue(s.get("max_concurrent_downloads", 2))
+        self.spin_fragments.SetValue(s.get("concurrent_fragments", 1))
         self.chk_open_folder.SetValue(s.get("open_folder_when_done", False))
         self.chk_organize.SetValue(s.get("organize_by_site", False))
         self.chk_organize_playlist.SetValue(s.get("organize_by_playlist", False))
@@ -279,7 +300,10 @@ class SettingsDialog(wx.Dialog):
         self.txt_useragent.SetValue(s.get("user_agent", ""))
 
         # Cookies
-        self.chk_cookies.SetValue(s.get("use_webview_cookies", False))
+        # Sites avec cookies
+        self.lst_cookie_sites.Clear()
+        for site in s.get("cookie_sites", []):
+            self.lst_cookie_sites.Append(site)
 
         # Avancé
         self.txt_ffmpeg.SetValue(s.get("ffmpeg_path", "ffmpeg"))
@@ -291,6 +315,7 @@ class SettingsDialog(wx.Dialog):
         # Général
         s["download_folder"]          = self.txt_folder.GetValue().strip()
         s["max_concurrent_downloads"] = self.spin_concurrent.GetValue()
+        s["concurrent_fragments"]     = self.spin_fragments.GetValue()
         s["open_folder_when_done"]    = self.chk_open_folder.GetValue()
         s["organize_by_site"]         = self.chk_organize.GetValue()
         s["organize_by_playlist"]     = self.chk_organize_playlist.GetValue()
@@ -309,8 +334,9 @@ class SettingsDialog(wx.Dialog):
         s["proxy_socks"] = self.txt_proxy_socks.GetValue().strip()
         s["user_agent"]  = self.txt_useragent.GetValue().strip()
 
-        # Cookies
-        s["use_webview_cookies"] = self.chk_cookies.GetValue()
+        # Sites avec cookies
+        s["cookie_sites"] = [self.lst_cookie_sites.GetString(i)
+                             for i in range(self.lst_cookie_sites.GetCount())]
 
         # Avancé
         s["ffmpeg_path"] = self.txt_ffmpeg.GetValue().strip() or "ffmpeg"
@@ -328,6 +354,16 @@ class SettingsDialog(wx.Dialog):
         self.btn_browse.Bind(wx.EVT_BUTTON, self._on_browse_folder)
         self.btn_ffmpeg_browse.Bind(wx.EVT_BUTTON, self._on_browse_ffmpeg)
         self.btn_ffmpeg_test.Bind(wx.EVT_BUTTON,   self._on_test_ffmpeg)
+
+    def _on_remove_cookie_site(self, _event) -> None:
+        sel = self.lst_cookie_sites.GetSelection()
+        if sel == wx.NOT_FOUND:
+            wx.MessageBox(
+                "Sélectionnez un site à supprimer.",
+                "Aucune sélection", wx.OK | wx.ICON_INFORMATION, self,
+            )
+            return
+        self.lst_cookie_sites.Delete(sel)
 
     def _on_ok(self, _event) -> None:
         s = self._collect_values()

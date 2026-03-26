@@ -40,6 +40,23 @@ OnProgressCallback  = Callable[[DownloadProgress], None]
 OnErrorCallback     = Callable[[str, str], None]   # (download_id, message)
 
 
+def _domain_from_url(url: str) -> str:
+    """Extrait le domaine principal d'une URL (ex: 'youtube.com')."""
+    from urllib.parse import urlparse
+    host = urlparse(url).hostname or ""
+    # Retirer le 'www.' pour normaliser
+    if host.startswith("www."):
+        host = host[4:]
+    return host.lower()
+
+
+def _should_use_cookies(settings: dict, url: str) -> bool:
+    """Vérifie si le domaine de l'URL est dans la liste cookie_sites."""
+    domain = _domain_from_url(url)
+    return any(domain == site or domain.endswith("." + site)
+               for site in settings.get("cookie_sites", []))
+
+
 class Downloader:
     """
     Wrapper yt-dlp pour extraction d'infos et téléchargement.
@@ -54,10 +71,12 @@ class Downloader:
     # Extraction d'infos (sans télécharger)
     # ------------------------------------------------------------------
 
-    def fetch_info(self, download_id: str, url: str) -> DownloadInfo | None:
+    def fetch_info(self, download_id: str, url: str,
+                   use_cookies: bool = False) -> DownloadInfo | None:
         """
         Retourne les métadonnées de l'URL sans télécharger.
         Détecte automatiquement les playlists.
+        use_cookies : forcer l'utilisation des cookies (retry après erreur).
         """
         # Première passe légère pour détecter les playlists
         flat_opts = {
@@ -70,8 +89,8 @@ class Downloader:
         if self._settings.get("proxy_http"):
             flat_opts["proxy"] = self._settings["proxy_http"]
 
-        # Cookies depuis le navigateur intégré (WebView2)
-        if self._settings.get("use_webview_cookies"):
+        # Cookies depuis le navigateur de l'utilisateur
+        if use_cookies or _should_use_cookies(self._settings, url):
             from app.core.cookies import apply_cookies
             apply_cookies(flat_opts)
 
@@ -134,6 +153,8 @@ class Downloader:
         verbose: bool = False,
         on_verbose_log: Callable[[str], None] | None = None,
         playlist_title: str | None = None,
+        playlist_number: int | None = None,
+        use_cookies: bool = False,
     ) -> str | None:
         """
         Télécharge l'URL dans le dossier configuré.
@@ -149,18 +170,25 @@ class Downloader:
         by_site     = self._settings.get("organize_by_site", False)
         by_playlist = self._settings.get("organize_by_playlist", False) and playlist_title
 
+        if playlist_number:
+            name_part = f"{playlist_number:02d} - %(title)s.%(ext)s"
+        else:
+            name_part = "%(title)s.%(ext)s"
+
         if by_site and by_playlist:
             pl_safe = _sanitize_dirname(playlist_title)
-            outtmpl = f"{dest}/%(extractor_key)s/{pl_safe}/%(title)s.%(ext)s"
+            outtmpl = f"{dest}/%(extractor_key)s/{pl_safe}/{name_part}"
         elif by_site:
-            outtmpl = f"{dest}/%(extractor_key)s/%(title)s.%(ext)s"
+            outtmpl = f"{dest}/%(extractor_key)s/{name_part}"
         elif by_playlist:
             pl_safe = _sanitize_dirname(playlist_title)
-            outtmpl = f"{dest}/{pl_safe}/%(title)s.%(ext)s"
+            outtmpl = f"{dest}/{pl_safe}/{name_part}"
         else:
-            outtmpl = f"{dest}/%(title)s.%(ext)s"
+            outtmpl = f"{dest}/{name_part}"
 
         log_buf = io.StringIO() if verbose else None
+
+        fragments = self._settings.get("concurrent_fragments", 1)
 
         opts = {
             "outtmpl":        outtmpl,
@@ -169,6 +197,7 @@ class Downloader:
             "verbose":        verbose,
             "progress_hooks": [self._make_hook(download_id, on_progress, stop_event, pause_event)],
             "js_runtimes":    {"node": {}},
+            "concurrent_fragment_downloads": fragments if fragments > 1 else 1,
         }
 
         if verbose and log_buf is not None:
@@ -176,11 +205,11 @@ class Downloader:
 
         if self._settings.get("proxy_http"):
             opts["proxy"] = self._settings["proxy_http"]
-        if self._settings.get("user_agent"):
-            opts["user_agent"] = self._settings["user_agent"]
 
         # Headers supplémentaires (provenant de l'UGE)
         headers = {}
+        if self._settings.get("user_agent"):
+            headers["User-Agent"] = self._settings["user_agent"]
         if referer:
             headers["Referer"] = referer
         if cookies:
@@ -193,8 +222,8 @@ class Downloader:
         # Impersonation navigateur pour contourner Cloudflare / HTTP/2 obligatoire
         opts["extractor_args"] = {"generic": {"impersonate": [""]}}
 
-        # Cookies depuis le navigateur intégré (WebView2)
-        if self._settings.get("use_webview_cookies"):
+        # Cookies depuis le navigateur de l'utilisateur
+        if use_cookies or _should_use_cookies(self._settings, url):
             from app.core.cookies import apply_cookies
             apply_cookies(opts)
 

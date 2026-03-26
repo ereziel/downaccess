@@ -5,6 +5,7 @@ from pathlib import Path
 DEFAULTS: dict = {
     "download_folder": str(Path.home() / "Downloads"),
     "max_concurrent_downloads": 2,
+    "concurrent_fragments": 1,      # 1=désactivé, >1=fragments en parallèle (-N)
     "post_processing": "none",      # none | mp4 | mp3 | m4a
     "open_folder_when_done": False,
     "ffmpeg_path": "ffmpeg",
@@ -16,10 +17,11 @@ DEFAULTS: dict = {
     "subtitle_format": "srt",       # srt | vtt | original
     "organize_by_site": False,
     "organize_by_playlist": False,
+    "playlist_numbering": 0,       # 0=original, 1=séquentiel, 2=aucun
     "clipboard_monitor": False,
     "ytdlp_extra_opts": [],
     "user_email": "",
-    "use_webview_cookies": False,
+    "cookie_sites": [],
 }
 
 

@@ -44,6 +44,7 @@ def _is_bare_domain(url: str) -> bool:
 ID_START        = wx.NewIdRef()
 ID_PAUSE        = wx.NewIdRef()
 ID_CANCEL       = wx.NewIdRef()
+ID_CLEAR_ALL    = wx.NewIdRef()
 ID_RETRY        = wx.NewIdRef()
 ID_MOVE_UP      = wx.NewIdRef()
 ID_MOVE_DOWN    = wx.NewIdRef()
@@ -173,6 +174,10 @@ class MainWindow(wx.Frame):
             self._reset_gauge()
         self.set_status("Téléchargement terminé.")
         speech.speak("Téléchargement terminé.")
+        # Si c'était un retry avec cookies, proposer de mémoriser le site
+        dl_data = self._dl_data.get(download_id, {})
+        if dl_data.get("use_cookies"):
+            self._propose_remember_cookie_site(dl_data.get("url", ""))
         # Ouvrir le dossier si tous les téléchargements sont terminés
         if self.settings.get("open_folder_when_done") and self._all_done():
             self._open_download_folder()
@@ -185,8 +190,77 @@ class MainWindow(wx.Frame):
         self.set_status("Erreur lors du téléchargement.")
         dlg = ErrorDialog(self, message)
         dlg.ShowModal()
-        if dlg.wants_report():
+        if dlg.wants_retry_cookies():
+            self._retry_with_cookies(download_id)
+        elif dlg.wants_report():
             self._start_error_report(download_id, message)
+        dlg.Destroy()
+
+    def _retry_with_cookies(self, download_id: str) -> None:
+        """Relance le téléchargement avec les cookies du navigateur."""
+        data = self._dl_data.get(download_id)
+        if not data:
+            self.set_status("Impossible de réessayer : données introuvables.")
+            return
+        # Supprimer l'item échoué et relancer avec cookies
+        self.download_list.remove_item(download_id)
+        self._dl_data.pop(download_id, None)
+        url = data["url"]
+        dl_id = self._queue.add(
+            url,
+            format_spec=data.get("format_spec", "auto"),
+            format_id=data.get("format_id"),
+            referer=data.get("referer"),
+            cookies=data.get("cookies"),
+            playlist_title=data.get("playlist_title"),
+            use_cookies=True,
+        )
+        label = data.get("format_spec", "auto").upper()
+        if label == "AUTO":
+            label = "Auto"
+        self.download_list.add_item(dl_id, url, site="—", fmt=label)
+        self._dl_data[dl_id] = {
+            "url": url,
+            "format_spec": data.get("format_spec", "auto"),
+            "format_id": data.get("format_id"),
+            "referer": data.get("referer"),
+            "cookies": data.get("cookies"),
+            "site": data.get("site", ""),
+            "playlist_title": data.get("playlist_title"),
+            "use_cookies": True,
+        }
+        self.set_count(self.download_list.count())
+        self.set_status("Relance avec les cookies du navigateur...")
+        speech.speak("Relance avec les cookies du navigateur.")
+
+    def _propose_remember_cookie_site(self, url: str) -> None:
+        """Après un retry cookies réussi, propose de mémoriser le site."""
+        if not url:
+            return
+        host = urlparse(url).hostname or ""
+        if host.startswith("www."):
+            host = host[4:]
+        host = host.lower()
+        if not host:
+            return
+        # Vérifier si le site est déjà mémorisé
+        sites = self.settings.get("cookie_sites", [])
+        if host in sites:
+            return
+        dlg = wx.MessageDialog(
+            self,
+            f"Le téléchargement avec cookies a réussi pour {host}.\n\n"
+            f"Voulez-vous toujours utiliser les cookies du navigateur "
+            f"pour ce site ?",
+            "Mémoriser les cookies pour ce site",
+            wx.YES_NO | wx.ICON_QUESTION,
+        )
+        if dlg.ShowModal() == wx.ID_YES:
+            sites.append(host)
+            self.settings["cookie_sites"] = sites
+            from app.core import settings as cfg
+            cfg.save(self.settings)
+            self.set_status(f"Cookies mémorisés pour {host}.")
         dlg.Destroy()
 
     def _on_dl_warning(self, download_id: str, message: str) -> None:
@@ -321,17 +395,36 @@ class MainWindow(wx.Frame):
 
         speech.speak(f"Playlist détectée : {info.title}. {len(info.playlist_entries)} vidéos.")
 
-        with PlaylistDialog(self, info.title, info.playlist_entries) as dlg:
+        from app.ui.playlist_dialog import NUMBER_ORIGINAL, NUMBER_SEQUENTIAL
+        from app.core import settings as cfg
+
+        default_num = self.settings.get("playlist_numbering", NUMBER_ORIGINAL)
+        with PlaylistDialog(self, info.title, info.playlist_entries,
+                            default_numbering=default_num) as dlg:
             if dlg.ShowModal() != wx.ID_OK:
                 self.set_status("Téléchargement de playlist annulé.")
                 return
             selected = dlg.get_selected_entries()
+            numbering = dlg.get_numbering_mode()
+
+        # Mémoriser le choix de numérotation
+        if numbering != default_num:
+            self.settings["playlist_numbering"] = numbering
+            cfg.save(self.settings)
 
         fmt_choice = self._dl_data.get("__last_fmt__", "auto")
-        for entry in selected:
+        for seq, (orig_idx, entry) in enumerate(selected, start=1):
             url = entry.get("url") or entry.get("webpage_url") or entry.get("id")
-            if url:
-                self._enqueue_url(url, fmt_choice, playlist_title=info.title)
+            if not url:
+                continue
+            if numbering == NUMBER_ORIGINAL:
+                num = orig_idx
+            elif numbering == NUMBER_SEQUENTIAL:
+                num = seq
+            else:
+                num = None
+            self._enqueue_url(url, fmt_choice, playlist_title=info.title,
+                              playlist_number=num)
 
         speech.speak(f"{len(selected)} vidéos ajoutées à la file.")
 
@@ -427,7 +520,11 @@ class MainWindow(wx.Frame):
         )
         self.mi_cancel = dl_menu.Append(
             ID_CANCEL, "A&nnuler\tDelete",
-            "Annuler et supprimer le téléchargement sélectionné",
+            "Supprimer le téléchargement sélectionné",
+        )
+        dl_menu.Append(
+            ID_CLEAR_ALL, "&Vider la liste\tShift+Delete",
+            "Annuler tous les téléchargements et vider la liste",
         )
         dl_menu.AppendSeparator()
         self.mi_retry = dl_menu.Append(
@@ -527,6 +624,7 @@ class MainWindow(wx.Frame):
         self.Bind(wx.EVT_MENU, self._on_start,          id=ID_START)
         self.Bind(wx.EVT_MENU, self._on_pause,          id=ID_PAUSE)
         self.Bind(wx.EVT_MENU, self._on_cancel,         id=ID_CANCEL)
+        self.Bind(wx.EVT_MENU, self._on_clear_all,      id=ID_CLEAR_ALL)
         self.Bind(wx.EVT_MENU, self._on_retry,          id=ID_RETRY)
         self.Bind(wx.EVT_MENU, self._on_move_up,        id=ID_MOVE_UP)
         self.Bind(wx.EVT_MENU, self._on_move_down,      id=ID_MOVE_DOWN)
@@ -662,9 +760,9 @@ class MainWindow(wx.Frame):
         if not self.settings.get("_login_intro_shown"):
             wx.MessageBox(
                 "Cette fonction ouvre votre navigateur pour vous connecter à un site.\n\n"
-                "Vos cookies de connexion seront sauvegardés et utilisés par DownAccess\n"
-                "pour télécharger du contenu protégé (abonnements, comptes premium).\n\n"
-                "Activez ensuite l'option dans Préférences → Réseau → Cookies.\n\n"
+                "Vos cookies de connexion seront sauvegardés dans votre navigateur.\n"
+                "Si un téléchargement échoue, DownAccess vous proposera automatiquement\n"
+                "de réessayer avec les cookies du navigateur.\n\n"
                 "Note : les contenus protégés par DRM (Netflix, Disney+, Prime Video…) "
                 "ne sont pas pris en charge.",
                 "Connexion à un site — Comment ça marche",
@@ -690,11 +788,56 @@ class MainWindow(wx.Frame):
             for url in urls:
                 self._enqueue_url(url, fmt_choice)
 
+    def _ask_video_or_playlist(self, url: str) -> str | None:
+        """
+        URL contenant vidéo + playlist → demander à l'utilisateur.
+        Retourne l'URL (éventuellement nettoyée), ou None si annulé.
+        """
+        dlg = wx.MessageDialog(
+            self,
+            "Cette URL contient une vidéo et une playlist.\n\n"
+            "Voulez-vous télécharger la playlist entière\n"
+            "ou uniquement cette vidéo ?",
+            "Vidéo ou playlist ?",
+            wx.YES_NO | wx.CANCEL | wx.ICON_QUESTION,
+        )
+        dlg.SetYesNoCancelLabels("La playlist", "La vidéo", "Annuler")
+        result = dlg.ShowModal()
+        dlg.Destroy()
+
+        if result == wx.ID_CANCEL:
+            return None
+
+        from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
+        parsed = urlparse(url)
+        params = parse_qs(parsed.query)
+
+        if result == wx.ID_NO:
+            # Vidéo seule → retirer le paramètre list= de l'URL
+            params.pop("list", None)
+            params.pop("index", None)
+            clean_query = urlencode(params, doseq=True)
+            return urlunparse(parsed._replace(query=clean_query))
+
+        # Playlist → construire une URL playlist pure pour que yt-dlp
+        # l'extraie comme playlist et non comme vidéo unique
+        list_id = params.get("list", [None])[0]
+        if list_id and "youtube" in (parsed.hostname or ""):
+            return f"https://www.youtube.com/playlist?list={list_id}"
+        return url
+
     def _enqueue_url(self, url: str, format_spec: str = "auto",
                      format_id: str | None = None,
                      referer: str | None = None,
                      cookies: str | None = None,
-                     playlist_title: str | None = None) -> None:
+                     playlist_title: str | None = None,
+                     playlist_number: int | None = None) -> None:
+        # Détection URL mixte vidéo + playlist (ex: YouTube watch?v=...&list=...)
+        if not playlist_title and "list=" in url and ("watch?" in url or "/watch/" in url):
+            url = self._ask_video_or_playlist(url)
+            if url is None:
+                return
+
         # Si la mise à jour yt-dlp est en cours, mettre en attente
         if self._updater_running:
             self._pending_downloads.append((url, format_spec, format_id, playlist_title))
@@ -702,14 +845,16 @@ class MainWindow(wx.Frame):
             speech.speak("URL ajoutée. Le téléchargement démarrera après la mise à jour de yt-dlp.", interrupt=False)
             return
         dl_id = self._queue.add(url, format_spec=format_spec, format_id=format_id,
-                                referer=referer, cookies=cookies, playlist_title=playlist_title)
+                                referer=referer, cookies=cookies,
+                                playlist_title=playlist_title,
+                                playlist_number=playlist_number)
         label = format_spec.upper() if format_spec != "auto" else "Auto"
         self.download_list.add_item(dl_id, url, site="—", fmt=label)
         # Stocker pour retry et rapport d'erreur
         self._dl_data[dl_id] = {
             "url": url, "format_spec": format_spec, "format_id": format_id,
             "referer": referer, "cookies": cookies, "site": "",
-            "playlist_title": playlist_title,
+            "playlist_title": playlist_title, "playlist_number": playlist_number,
         }
         self._dl_data["__last_fmt__"] = format_spec
         self.set_count(self.download_list.count())
@@ -811,17 +956,45 @@ class MainWindow(wx.Frame):
         if dl_id is None:
             self.set_status("Aucun téléchargement sélectionné.")
             return
-        if wx.MessageBox(
-            "Annuler et supprimer ce téléchargement ?",
-            "Confirmer l'annulation",
-            wx.YES_NO | wx.ICON_QUESTION,
-        ) == wx.YES:
+        status = self.download_list.get_selected_status()
+        if status in ("En cours", "En attente"):
+            if wx.MessageBox(
+                "Annuler ce téléchargement ?",
+                "Confirmer l'annulation",
+                wx.YES_NO | wx.ICON_QUESTION,
+            ) != wx.YES:
+                return
             self._queue.cancel(dl_id)
-            self.download_list.remove_selected()
-            self._progress_milestones.pop(dl_id, None)
-            self.set_status("Téléchargement supprimé.")
-            speech.speak("Téléchargement supprimé.")
-            self.set_count(self.download_list.count())
+        self.download_list.remove_selected()
+        self._progress.pop(dl_id, None)
+        self._dl_data.pop(dl_id, None)
+        self.set_status("Téléchargement supprimé de la liste.")
+        speech.speak("Supprimé.")
+        self.set_count(self.download_list.count())
+
+    def _on_clear_all(self, _event) -> None:
+        if self.download_list.count() == 0:
+            self.set_status("La liste est déjà vide.")
+            return
+        # Vérifier s'il y a des téléchargements en cours
+        active = self.download_list.count_by_status("En cours")
+        pending = self.download_list.count_by_status("En attente")
+        if active + pending > 0:
+            msg = f"Il y a {active + pending} téléchargement(s) en cours ou en attente.\n\nTout annuler et vider la liste ?"
+        else:
+            msg = "Vider toute la liste ?"
+        if wx.MessageBox(msg, "Confirmer", wx.YES_NO | wx.ICON_QUESTION) != wx.YES:
+            return
+        # Annuler tous les téléchargements actifs
+        for dl_id in self.download_list.get_all_ids():
+            self._queue.cancel(dl_id)
+        self.download_list.clear_all()
+        self._progress.clear()
+        self._dl_data.clear()
+        self._reset_gauge()
+        self.set_count(0)
+        self.set_status("Liste vidée.")
+        speech.speak("Liste vidée.")
 
     def _on_retry(self, _event) -> None:
         dl_id = self.download_list.get_selected_id()
@@ -921,7 +1094,8 @@ class MainWindow(wx.Frame):
             "Ctrl+Shift+V     Activer/désactiver la surveillance du presse-papiers\n"
             "F5               Démarrer la file\n"
             "Espace           Pause / Reprendre\n"
-            "Suppr            Annuler / Supprimer\n"
+            "Suppr            Supprimer de la liste\n"
+            "Maj+Suppr        Vider toute la liste\n"
             "F2               Réessayer\n"
             "Alt+Haut         Monter dans la file\n"
             "Alt+Bas          Descendre dans la file\n"

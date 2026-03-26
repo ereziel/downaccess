@@ -19,7 +19,9 @@ class QueueItem:
     format_id: str | None = None     # format_id yt-dlp (mode manuel)
     referer: str | None = None       # Referer HTTP (UGE)
     cookies: str | None = None       # Cookies de session (UGE, document.cookie)
-    playlist_title: str | None = None  # Titre de la playlist parente (organisation dossier)
+    playlist_title: str | None = None   # Titre de la playlist parente (organisation dossier)
+    playlist_number: int | None = None # Numéro dans la playlist (1-based)
+    use_cookies: bool = False          # Forcer les cookies navigateur (retry)
     stop_event:  threading.Event = field(default_factory=threading.Event)
     pause_event: threading.Event = field(default_factory=threading.Event)
 
@@ -72,7 +74,9 @@ class QueueManager:
 
     def add(self, url: str, format_spec: str = "auto", format_id: str | None = None,
             referer: str | None = None, cookies: str | None = None,
-            playlist_title: str | None = None) -> str:
+            playlist_title: str | None = None,
+            playlist_number: int | None = None,
+            use_cookies: bool = False) -> str:
         """Ajoute une URL à la file. Retourne le download_id."""
         dl_id = str(uuid.uuid4())
         item = QueueItem(
@@ -83,6 +87,8 @@ class QueueManager:
             referer=referer,
             cookies=cookies,
             playlist_title=playlist_title,
+            playlist_number=playlist_number,
+            use_cookies=use_cookies,
         )
         with self._lock:
             self._queue.append(item)
@@ -182,7 +188,7 @@ class QueueManager:
 
         # 1. Extraction des infos
         try:
-            info = dl.fetch_info(dl_id, item.url)
+            info = dl.fetch_info(dl_id, item.url, use_cookies=item.use_cookies)
             if not info:
                 self._finish(dl_id)
                 return
@@ -217,6 +223,8 @@ class QueueManager:
                 referer=item.referer,
                 cookies=item.cookies,
                 playlist_title=item.playlist_title,
+                playlist_number=item.playlist_number,
+                use_cookies=item.use_cookies,
             )
             if warning and self._on_warning:
                 wx.CallAfter(self._on_warning, dl_id, warning)

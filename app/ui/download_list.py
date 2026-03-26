@@ -141,6 +141,13 @@ class DownloadList(wx.ListCtrl):
             return None
         return next((k for k, v in self._items.items() if v == idx), None)
 
+    def get_selected_status(self) -> str | None:
+        """Retourne le statut de l'item sélectionné (En attente, En cours, Terminé, Erreur)."""
+        idx = self.GetFirstSelected()
+        if idx == -1:
+            return None
+        return self.GetItemText(idx, COL_STATE)
+
     def move_item_up(self, download_id: str) -> bool:
         idx = self._items.get(download_id)
         if idx is None or idx == 0:
@@ -179,3 +186,12 @@ class DownloadList(wx.ListCtrl):
 
     def count(self) -> int:
         return self.GetItemCount()
+
+    def get_all_ids(self) -> list[str]:
+        """Retourne tous les download_id de la liste."""
+        return list(self._items.keys())
+
+    def clear_all(self) -> None:
+        """Supprime tous les items de la liste."""
+        self.DeleteAllItems()
+        self._items.clear()

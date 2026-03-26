@@ -2,6 +2,11 @@ import wx
 
 from app.core import speech
 
+# Modes de numérotation des fichiers
+NUMBER_ORIGINAL   = 0  # Numéro de la vidéo dans la playlist
+NUMBER_SEQUENTIAL = 1  # Numéro séquentiel (1, 2, 3...)
+NUMBER_NONE       = 2  # Pas de numérotation
+
 
 class PlaylistDialog(wx.Dialog):
     """
@@ -10,13 +15,15 @@ class PlaylistDialog(wx.Dialog):
     natives UIA/MSAA lues par NVDA (Espace = coché/non coché annoncé).
     """
 
-    def __init__(self, parent, playlist_title: str, entries: list[dict]):
+    def __init__(self, parent, playlist_title: str, entries: list[dict],
+                 default_numbering: int = NUMBER_ORIGINAL):
         super().__init__(
             parent,
             title=f"Playlist — {playlist_title}",
             style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER,
         )
         self._entries = entries
+        self._default_numbering = default_numbering
         self._build_ui(entries)
         self._bind_events()
         self.SetMinSize((560, 420))
@@ -57,6 +64,21 @@ class PlaylistDialog(wx.Dialog):
         row_sel.Add(self.btn_none,   0, wx.RIGHT, 6)
         row_sel.Add(self.btn_invert, 0)
 
+        # Numérotation des fichiers
+        self.radio_number = wx.RadioBox(
+            panel,
+            label="Numérotation des fichiers",
+            choices=[
+                "Numéro dans la playlist (position originale)",
+                "Numéro séquentiel (1, 2, 3...)",
+                "Ne pas numéroter",
+            ],
+            majorDimension=1,
+            style=wx.RA_SPECIFY_COLS,
+            name="Numérotation des fichiers",
+        )
+        self.radio_number.SetSelection(self._default_numbering)
+
         # Compteur (StaticText mis à jour → NVDA peut le lire en naviguant)
         self.lbl_count = wx.StaticText(panel,
             label=self._count_label(len(entries)))
@@ -72,9 +94,10 @@ class PlaylistDialog(wx.Dialog):
 
         main_sizer.Add(lbl,            0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 12)
         main_sizer.Add(self.lst,       1, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 6)
-        main_sizer.Add(row_sel,        0, wx.LEFT | wx.RIGHT | wx.TOP, 8)
-        main_sizer.Add(self.lbl_count, 0, wx.LEFT | wx.RIGHT | wx.TOP, 4)
-        main_sizer.Add(btn_sizer,      0, wx.EXPAND | wx.ALL, 12)
+        main_sizer.Add(row_sel,            0, wx.LEFT | wx.RIGHT | wx.TOP, 8)
+        main_sizer.Add(self.radio_number, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 8)
+        main_sizer.Add(self.lbl_count,    0, wx.LEFT | wx.RIGHT | wx.TOP, 4)
+        main_sizer.Add(btn_sizer,         0, wx.EXPAND | wx.ALL, 12)
 
         panel.SetSizer(main_sizer)
 
@@ -82,7 +105,8 @@ class PlaylistDialog(wx.Dialog):
         self.btn_all.MoveAfterInTabOrder(self.lst)
         self.btn_none.MoveAfterInTabOrder(self.btn_all)
         self.btn_invert.MoveAfterInTabOrder(self.btn_none)
-        self.btn_ok.MoveAfterInTabOrder(self.btn_invert)
+        self.radio_number.MoveAfterInTabOrder(self.btn_invert)
+        self.btn_ok.MoveAfterInTabOrder(self.radio_number)
         self.btn_cancel.MoveAfterInTabOrder(self.btn_ok)
 
         self.lst.SetFocus()
@@ -144,9 +168,14 @@ class PlaylistDialog(wx.Dialog):
     # API publique
     # ------------------------------------------------------------------
 
-    def get_selected_entries(self) -> list[dict]:
+    def get_selected_entries(self) -> list[tuple[int, dict]]:
+        """Retourne les entrées sélectionnées avec leur index original (1-based)."""
         return [
-            self._entries[i]
+            (i + 1, self._entries[i])
             for i in range(self.lst.GetItemCount())
             if self.lst.IsItemChecked(i)
         ]
+
+    def get_numbering_mode(self) -> int:
+        """Retourne NUMBER_ORIGINAL, NUMBER_SEQUENTIAL ou NUMBER_NONE."""
+        return self.radio_number.GetSelection()
