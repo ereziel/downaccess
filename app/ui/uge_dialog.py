@@ -355,9 +355,7 @@ class UGEDialog(wx.Frame):
             self._intercept_enabled = True
             self._saved_urls: set[str] = set()  # déduplication
             speech.speak("Interception des requêtes média activée.")
-            _log.info("Fetch interception enabled (Response stage)")
-        except Exception as exc:
-            _log.error("Failed to enable Fetch interception: %s", exc)
+        except Exception:
             self.chk_intercept.SetValue(False)
             self._intercept_enabled = False
 
@@ -367,9 +365,8 @@ class UGEDialog(wx.Frame):
             self._page.run_cdp("Fetch.disable")
             self._intercept_enabled = False
             speech.speak("Interception des requêtes média désactivée.")
-            _log.info("Fetch interception disabled")
-        except Exception as exc:
-            _log.error("Failed to disable Fetch interception: %s", exc)
+        except Exception:
+            pass  # Normal si Chrome déjà fermé
 
     def _on_request_paused(self, **kwargs) -> None:
         """Callback CDP Fetch.requestPaused au stade Response (thread Driver).
@@ -389,11 +386,8 @@ class UGEDialog(wx.Frame):
                 pass
             return
 
-        _log.info("Fetch response intercepted: %s (status=%d)", url[:120], status_code)
-
         # Laisser passer les non-200/206
         if status_code not in (200, 206):
-            _log.info("Fetch: status %d, laisser passer: %s", status_code, url[:120])
             try:
                 _drv.run("Fetch.continueRequest", requestId=request_id)
             except Exception:
@@ -402,7 +396,6 @@ class UGEDialog(wx.Frame):
 
         # Ignorer les URLs sans token
         if "?" not in url:
-            _log.info("Fetch: URL sans token, laisser passer: %s", url[:120])
             try:
                 _drv.run("Fetch.continueRequest", requestId=request_id)
             except Exception:
@@ -422,7 +415,7 @@ class UGEDialog(wx.Frame):
                 )
                 raw = body_result.get("body", "")
                 is_b64 = body_result.get("base64Encoded", False)
-                _log.info("Fetch body: %d chars, base64=%s", len(raw), is_b64)
+                _log.debug("Fetch body: %d chars, base64=%s", len(raw), is_b64)
                 body_data = base64.b64decode(raw) if is_b64 else raw.encode("utf-8")
             except Exception as exc:
                 _log.error("Fetch.getResponseBody failed: %s", exc)
@@ -654,8 +647,8 @@ class UGEDialog(wx.Frame):
 
                 current_url = self._page.url
                 wx.CallAfter(self._update_detected, found_urls, current_url)
-            except Exception as exc:
-                _log.debug("Polling error: %s", exc)
+            except Exception:
+                pass  # Normal quand Chrome est fermé
             finally:
                 self._polling = False
 

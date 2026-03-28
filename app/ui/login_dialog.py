@@ -1,8 +1,8 @@
 """
 Dialogue de connexion à un site.
-Ouvre un vrai navigateur Chrome (via DrissionPage) pour que l'utilisateur
-se connecte à un service. Les cookies sont sauvegardés dans le profil
-Chrome par défaut et réutilisés par yt-dlp.
+Ouvre le navigateur Chrome avec le vrai profil de l'utilisateur
+(via DrissionPage) pour que les cookies soient conservés.
+yt-dlp y a accès via cookiesfrombrowser.
 """
 import logging
 import threading
@@ -17,8 +17,9 @@ _log = logging.getLogger("downaccess.login")
 
 class LoginDialog(wx.Dialog):
     """
-    Dialogue de connexion. Ouvre Chrome via DrissionPage,
+    Dialogue de connexion. Ouvre Chrome avec le vrai profil utilisateur,
     l'utilisateur se connecte, puis ferme ce dialogue.
+    Les cookies restent dans le profil Chrome → yt-dlp y accède.
     """
 
     def __init__(self, parent):
@@ -26,7 +27,7 @@ class LoginDialog(wx.Dialog):
             parent,
             title="Se connecter à un site — DownAccess",
             style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER,
-            size=(500, 250),
+            size=(500, 300),
         )
         self._page = None
         self._build_ui()
@@ -36,6 +37,7 @@ class LoginDialog(wx.Dialog):
         speech.speak(
             "Connexion à un site. "
             "Saisissez l'adresse et connectez-vous dans le navigateur. "
+            "Vos cookies seront conservés pour les prochains téléchargements. "
             "Note : les contenus protégés par DRM (Netflix, Disney+, Prime Video) ne sont pas pris en charge.",
         )
 
@@ -62,14 +64,25 @@ class LoginDialog(wx.Dialog):
         self.lbl_status = wx.StaticText(
             panel,
             label="Entrez l'adresse du site et connectez-vous dans le navigateur.\n"
-                  "Vos cookies seront sauvegardés automatiquement.\n\n"
-                  "Note : les contenus protégés par DRM (Netflix, Disney+, Prime Video) ne sont pas pris en charge.",
+                  "Votre vrai profil Chrome est utilisé : vos cookies seront conservés\n"
+                  "et réutilisés automatiquement pour les téléchargements.\n\n"
+                  "Note : les contenus protégés par DRM ne sont pas pris en charge.",
         )
         sizer.Add(self.lbl_status, 1, wx.EXPAND | wx.ALL, 8)
 
-        # Bouton fermer
+        # Boutons
+        btn_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        self.btn_clear_cookies = wx.Button(
+            panel,
+            label="Supprimer les cookies du site",
+            name="Supprimer les cookies du site actuellement ouvert",
+        )
+        self.btn_clear_cookies.Disable()
         self.btn_close = wx.Button(panel, wx.ID_CLOSE, label="Fermer", name="Fermer")
-        sizer.Add(self.btn_close, 0, wx.ALIGN_RIGHT | wx.RIGHT | wx.BOTTOM, 8)
+        btn_sizer.Add(self.btn_clear_cookies, 0, wx.RIGHT, 6)
+        btn_sizer.AddStretchSpacer()
+        btn_sizer.Add(self.btn_close, 0)
+        sizer.Add(btn_sizer, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 8)
 
         panel.SetSizer(sizer)
         self.txt_url.SetFocus()
@@ -77,6 +90,7 @@ class LoginDialog(wx.Dialog):
     def _bind_events(self) -> None:
         self.txt_url.Bind(wx.EVT_TEXT_ENTER, self._on_go)
         self.btn_go.Bind(wx.EVT_BUTTON, self._on_go)
+        self.btn_clear_cookies.Bind(wx.EVT_BUTTON, self._on_clear_cookies)
         self.btn_close.Bind(wx.EVT_BUTTON, lambda _e: self.Close())
         self.Bind(wx.EVT_CLOSE, self._on_close)
 
@@ -88,7 +102,7 @@ class LoginDialog(wx.Dialog):
             url = "https://" + url
             self.txt_url.SetValue(url)
 
-        self.lbl_status.SetLabel("Ouverture de Chrome...")
+        self.lbl_status.SetLabel("Ouverture du navigateur…")
         self.btn_go.Disable()
 
         def open_browser():
@@ -99,12 +113,13 @@ class LoginDialog(wx.Dialog):
                                  "Aucun navigateur compatible trouvé.\n"
                                  "Installez Google Chrome, Microsoft Edge ou Brave.")
                     return
-                from DrissionPage import ChromiumPage, ChromiumOptions
-                co = ChromiumOptions()
-                co.set_browser_path(bp)
-                co.auto_port()
-                self._page = ChromiumPage(co)
-                self._browser_name = browser_name(bp)
+                if self._page is None:
+                    from DrissionPage import ChromiumPage, ChromiumOptions
+                    co = ChromiumOptions()
+                    co.set_browser_path(bp)
+                    co.use_system_user_path()
+                    self._page = ChromiumPage(co)
+                    self._browser_name = browser_name(bp)
                 self._page.get(url)
                 title = self._page.title
                 wx.CallAfter(self._on_browser_ready, title)
@@ -122,17 +137,70 @@ class LoginDialog(wx.Dialog):
             "Vos cookies seront conservés pour les prochains téléchargements."
         )
         self.btn_go.Enable()
+        self.btn_clear_cookies.Enable()
         speech.speak(f"{name} est ouvert. Connectez-vous puis fermez cette fenêtre.")
 
     def _on_browser_error(self, error: str) -> None:
         self.btn_go.Enable()
         self.lbl_status.SetLabel(f"Erreur : {error}")
         wx.MessageBox(
-            f"Impossible d'ouvrir Chrome.\n\n{error}",
+            f"Impossible d'ouvrir le navigateur.\n\n{error}",
             "Erreur",
             wx.OK | wx.ICON_ERROR,
             self,
         )
+
+    def _on_clear_cookies(self, _event) -> None:
+        """Supprime les cookies du site actuellement ouvert."""
+        if not self._page:
+            return
+        try:
+            current_url = self._page.url
+            # Extraire le domaine
+            from urllib.parse import urlparse
+            domain = urlparse(current_url).hostname or ""
+            if not domain:
+                wx.MessageBox(
+                    "Impossible de déterminer le domaine du site.",
+                    "Erreur", wx.OK | wx.ICON_WARNING, self,
+                )
+                return
+
+            confirm = wx.MessageBox(
+                f"Supprimer tous les cookies de {domain} ?\n\n"
+                "Vous serez déconnecté de ce site.",
+                "Confirmer la suppression",
+                wx.YES_NO | wx.NO_DEFAULT | wx.ICON_QUESTION,
+                self,
+            )
+            if confirm != wx.YES:
+                return
+
+            # Supprimer les cookies via CDP
+            self._page.run_cdp(
+                "Network.deleteCookies",
+                domain=domain,
+                name="",
+            )
+            # Supprimer aussi avec le point devant (sous-domaines)
+            self._page.run_cdp(
+                "Network.deleteCookies",
+                domain=f".{domain}",
+                name="",
+            )
+            # Recharger la page pour refléter la déconnexion
+            self._page.refresh()
+            self.lbl_status.SetLabel(
+                f"Cookies de {domain} supprimés.\n"
+                "Vous êtes déconnecté de ce site."
+            )
+            speech.speak(f"Cookies de {domain} supprimés.")
+        except Exception as exc:
+            _log.error("Erreur suppression cookies : %s", exc)
+            wx.MessageBox(
+                f"Erreur lors de la suppression des cookies :\n{exc}",
+                "Erreur", wx.OK | wx.ICON_ERROR, self,
+            )
 
     def _on_close(self, event) -> None:
         if self._page:
