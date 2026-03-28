@@ -1,5 +1,5 @@
 """
-update_ffmpeg.py — Télécharge ffmpeg depuis yt-dlp/FFmpeg-Builds et le place dans assets/.
+update_ffmpeg.py — Télécharge ffmpeg et ffplay depuis yt-dlp/FFmpeg-Builds et les place dans assets/.
 
 Usage :
     python scripts/update_ffmpeg.py
@@ -20,8 +20,13 @@ RELEASE_URL = (
     "ffmpeg-master-latest-win64-gpl.zip"
 )
 ASSETS_DIR   = Path(__file__).parent.parent / "assets"
-FFMPEG_OUT   = ASSETS_DIR / "ffmpeg.exe"
 VERSION_FILE = ASSETS_DIR / "ffmpeg_version.txt"
+
+# Binaires à extraire : nom dans le zip → chemin de sortie
+_BINARIES = {
+    "ffmpeg.exe": ASSETS_DIR / "ffmpeg.exe",
+    "ffplay.exe": ASSETS_DIR / "ffplay.exe",
+}
 
 
 def _progress(downloaded: int, total: int) -> None:
@@ -35,7 +40,7 @@ def _progress(downloaded: int, total: int) -> None:
 def main() -> int:
     ASSETS_DIR.mkdir(parents=True, exist_ok=True)
 
-    print(f"Téléchargement de ffmpeg (yt-dlp/FFmpeg-Builds)…")
+    print(f"Téléchargement de ffmpeg + ffplay (yt-dlp/FFmpeg-Builds)...")
     print(f"  URL : {RELEASE_URL}")
 
     try:
@@ -53,27 +58,25 @@ def main() -> int:
         print(f"\n❌ Erreur réseau : {e}")
         return 1
 
-    print("Extraction de ffmpeg.exe…")
+    print("Extraction...")
     buf.seek(0)
     try:
         with zipfile.ZipFile(buf) as zf:
-            # Le zip contient un dossier racine, chercher bin/ffmpeg.exe dedans
-            candidates = [n for n in zf.namelist()
-                          if n.endswith("/bin/ffmpeg.exe") or n == "bin/ffmpeg.exe"]
-            if not candidates:
-                print("❌ ffmpeg.exe introuvable dans l'archive.")
-                print("   Fichiers trouvés :", [n for n in zf.namelist() if "ffmpeg" in n])
-                return 1
-            src = candidates[0]
-            print(f"  Trouvé : {src}")
-            data = zf.read(src)
+            names = zf.namelist()
+            for binary_name, out_path in _BINARIES.items():
+                candidates = [n for n in names
+                              if n.endswith(f"/bin/{binary_name}") or n == f"bin/{binary_name}"]
+                if not candidates:
+                    print(f"  {binary_name} introuvable dans l'archive, ignore.")
+                    continue
+                src = candidates[0]
+                data = zf.read(src)
+                out_path.write_bytes(data)
+                size_mb = len(data) / 1_048_576
+                print(f"  {binary_name} -> {out_path}  ({size_mb:.1f} Mo)")
     except zipfile.BadZipFile as e:
-        print(f"❌ Archive corrompue : {e}")
+        print(f"Archive corrompue : {e}")
         return 1
-
-    FFMPEG_OUT.write_bytes(data)
-    size_mb = len(data) / 1_048_576
-    print(f"  Écrit  : {FFMPEG_OUT}  ({size_mb:.1f} Mo)")
 
     # Fichier de version
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
@@ -85,7 +88,7 @@ def main() -> int:
     )
     print(f"  Version: {VERSION_FILE}")
 
-    print("\nOK  ffmpeg mis a jour avec succes.")
+    print("\nOK  ffmpeg + ffplay mis a jour avec succes.")
     return 0
 
 

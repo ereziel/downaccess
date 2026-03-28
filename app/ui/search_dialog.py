@@ -2,11 +2,16 @@
 SearchDialog — saisie de la recherche
 SearchResultsDialog — sélection des résultats
 """
+import subprocess
 import threading
+from pathlib import Path
 
 import wx
+import yt_dlp
 
 from app.core import speech
+
+_FFPLAY = Path(__file__).parent.parent.parent / "assets" / "ffplay.exe"
 
 # Sites supportés : (label affiché, préfixe yt-dlp)
 _SITES = [
@@ -99,8 +104,10 @@ class SearchResultsDialog(wx.Dialog):
             size=(820, 480),
         )
         self._results = results
+        self._preview_proc = None
         self._build_ui(site_label)
         self._populate()
+        self.Bind(wx.EVT_CLOSE, self._on_close)
         self.lst.SetFocus()
         n = len(results)
         speech.speak(
@@ -144,10 +151,12 @@ class SearchResultsDialog(wx.Dialog):
 
         # Boutons
         btn_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        self.btn_preview = wx.Button(self, label="Aperçu", name="Aperçu")
         self.btn_all   = wx.Button(self, label="Tout sélectionner",   name="Tout sélectionner")
         self.btn_none  = wx.Button(self, label="Tout désélectionner", name="Tout désélectionner")
         self.btn_dl    = wx.Button(self, wx.ID_OK, label="Télécharger la sélection")
         self.btn_close = wx.Button(self, wx.ID_CANCEL, label="Fermer")
+        btn_sizer.Add(self.btn_preview, 0, wx.RIGHT, 6)
         btn_sizer.Add(self.btn_all,   0, wx.RIGHT, 6)
         btn_sizer.Add(self.btn_none,  0, wx.RIGHT, 6)
         btn_sizer.AddStretchSpacer()
@@ -160,6 +169,8 @@ class SearchResultsDialog(wx.Dialog):
 
         self.lst.Bind(wx.EVT_LIST_ITEM_CHECKED,   self._on_check)
         self.lst.Bind(wx.EVT_LIST_ITEM_UNCHECKED, self._on_check)
+        self.lst.Bind(wx.EVT_LIST_ITEM_ACTIVATED, self._on_preview)
+        self.btn_preview.Bind(wx.EVT_BUTTON, self._on_preview)
         self.btn_all.Bind(wx.EVT_BUTTON,  self._on_select_all)
         self.btn_none.Bind(wx.EVT_BUTTON, self._on_select_none)
         self.Bind(wx.EVT_BUTTON, self._on_download, id=wx.ID_OK)
@@ -192,7 +203,93 @@ class SearchResultsDialog(wx.Dialog):
             self.lst.CheckItem(i, False)
         self._on_check(None)
 
+    # -- Aperçu audio --------------------------------------------------
+
+    def _on_preview(self, _event) -> None:
+        """Lance l'aperçu du résultat ayant le focus."""
+        if self._preview_proc and self._preview_proc.poll() is None:
+            self._stop_preview()
+            return
+        idx = self.lst.GetFocusedItem()
+        if idx < 0:
+            speech.speak("Sélectionnez un résultat.")
+            return
+        entry = self._results[idx]
+        title = entry.get("title") or entry.get("id") or "?"
+        url = self._entry_url(entry)
+        if not url:
+            return
+        speech.speak("Chargement de l'aperçu...")
+        self.btn_preview.SetLabel("Arrêter l'aperçu")
+        threading.Thread(target=self._fetch_and_play, args=(url, title), daemon=True).start()
+
+    def _fetch_and_play(self, url: str, title: str) -> None:
+        """Thread : extrait l'URL de streaming puis lance ffplay."""
+        try:
+            opts = {
+                "quiet": True,
+                "no_warnings": True,
+                "format": "bestaudio/best",
+                "skip_download": True,
+            }
+            with yt_dlp.YoutubeDL(opts) as ydl:
+                info = ydl.extract_info(url, download=False)
+            stream_url = info.get("url")
+            if not stream_url:
+                wx.CallAfter(self._preview_error, "Impossible d'extraire l'URL de streaming.")
+                return
+            wx.CallAfter(self._start_ffplay, stream_url, title)
+        except Exception as e:
+            wx.CallAfter(self._preview_error, str(e))
+
+    def _start_ffplay(self, stream_url: str, title: str) -> None:
+        """Lance ffplay (thread UI)."""
+        self._stop_preview(silent=True)
+        try:
+            self._preview_proc = subprocess.Popen(
+                [str(_FFPLAY), "-nodisp", "-autoexit", "-loglevel", "quiet", stream_url],
+                creationflags=subprocess.CREATE_NO_WINDOW,
+            )
+        except OSError as e:
+            self._preview_error(f"Impossible de lancer ffplay : {e}")
+            return
+        self.btn_preview.SetLabel("Arrêter l'aperçu")
+        speech.speak(f"Lecture : {title}")
+
+    def _stop_preview(self, silent: bool = False) -> None:
+        if self._preview_proc and self._preview_proc.poll() is None:
+            self._preview_proc.terminate()
+        self._preview_proc = None
+        self.btn_preview.SetLabel("Aperçu")
+        if not silent:
+            speech.speak("Aperçu arrêté.")
+
+    def _preview_error(self, msg: str) -> None:
+        self.btn_preview.SetLabel("Aperçu")
+        wx.MessageBox(msg, "Erreur aperçu", wx.OK | wx.ICON_ERROR, self)
+
+    def _entry_url(self, entry: dict) -> str:
+        """Reconstruit l'URL web d'une entrée."""
+        url = entry.get("webpage_url") or entry.get("url") or ""
+        if url and not url.startswith("http"):
+            ie_key = (entry.get("ie_key") or entry.get("extractor_key") or "").lower()
+            vid_id = entry.get("id", "") or url
+            if "youtube" in ie_key or not ie_key:
+                url = f"https://www.youtube.com/watch?v={vid_id}"
+            elif "bilibili" in ie_key or "bili" in ie_key:
+                url = f"https://www.bilibili.com/video/{vid_id}"
+            else:
+                url = ""
+        return url
+
+    def _on_close(self, _event) -> None:
+        self._stop_preview(silent=True)
+        self.EndModal(wx.ID_CANCEL)
+
+    # -- Téléchargement -------------------------------------------------
+
     def _on_download(self, _event) -> None:
+        self._stop_preview(silent=True)
         if not self.get_selected_entries():
             msg = "Veuillez cocher au moins un résultat à télécharger (touche Espace)."
             speech.speak(msg)
