@@ -199,6 +199,7 @@ class UGEDialog(wx.Frame):
         self._detected: list[str] = []
         self._poll_timer = wx.Timer(self)
         self._page = None  # DrissionPage ChromiumPage
+        self._polling = False
 
         self._build_ui()
         self._bind_events()
@@ -382,15 +383,16 @@ class UGEDialog(wx.Frame):
     # ------------------------------------------------------------------
 
     def _on_poll(self, _event) -> None:
-        if self._page is None:
+        if self._page is None or self._polling:
             return
+        self._polling = True
 
         def poll():
             try:
                 found_urls = []
 
                 # 1. Requêtes réseau capturées (iframes inclus)
-                for packet in self._page.listen.steps():
+                for packet in self._page.listen.steps(timeout=0.5):
                     url = packet.url if hasattr(packet, 'url') else str(packet)
                     if url and _is_media_url(url):
                         found_urls.append(url)
@@ -406,8 +408,10 @@ class UGEDialog(wx.Frame):
 
                 current_url = self._page.url
                 wx.CallAfter(self._update_detected, found_urls, current_url)
-            except Exception:
-                pass
+            except Exception as exc:
+                _log.debug("Polling error: %s", exc)
+            finally:
+                self._polling = False
 
         threading.Thread(target=poll, daemon=True).start()
 
