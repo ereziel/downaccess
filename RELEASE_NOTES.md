@@ -1,15 +1,9 @@
-# Nouveautés de la version 0.1.8
+# Nouveautés de la version 0.1.9
 
 ## Nouveautés
 
-- **Téléchargement de sites protégés** : les sites qui bloquent les outils classiques (tokens à usage unique, vérification serveur) peuvent maintenant être téléchargés via l'extraction guidée. Cochez "Intercepter les requêtes", lancez la lecture dans Chrome, et le fichier est sauvegardé automatiquement.
+- **Aperçu audio avant téléchargement** : dans les résultats de recherche, vous pouvez maintenant écouter un résultat avant de le télécharger. Utilisez le bouton "Aperçu" ou appuyez sur Entrée. Appuyez à nouveau pour arrêter la lecture.
 
-- **Connexion aux sites améliorée** : le navigateur utilise maintenant votre vrai profil Chrome. Vos cookies sont conservés après la fermeture et réutilisés automatiquement pour les téléchargements.
+## Améliorations d'accessibilité
 
-- **Déconnexion d'un site** : nouveau bouton "Supprimer les cookies du site" dans la fenêtre de connexion pour vous déconnecter d'un site.
-
-- **Nom de fichier personnalisé** : option dans les préférences pour utiliser le titre de la page comme nom de fichier lors de l'interception (désactivée par défaut).
-
-## Corrections
-
-- Réduction importante des messages dans les journaux internes.
+- **Raccourcis clavier** : la fenêtre des raccourcis clavier est maintenant navigable ligne par ligne avec les flèches, compatible avec les afficheurs braille.
