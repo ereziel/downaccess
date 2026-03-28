@@ -1101,9 +1101,8 @@ class MainWindow(wx.Frame):
 
     def _on_shortcuts(self, _event) -> None:
         msg = (
-            "Raccourcis clavier — DownAccess\n\n"
             "Ctrl+N           Ajouter URL(s)\n"
-            "Ctrl+F           Rechercher (YouTube, SoundCloud…)\n"
+            "Ctrl+F           Rechercher (YouTube, SoundCloud...)\n"
             "Ctrl+G           Extraction guidée (navigateur intégré)\n"
             "Ctrl+V           Coller URL depuis le presse-papiers\n"
             "Ctrl+Shift+V     Activer/désactiver la surveillance du presse-papiers\n"
@@ -1116,9 +1115,20 @@ class MainWindow(wx.Frame):
             "Alt+Bas          Descendre dans la file\n"
             "Ctrl+O           Ouvrir le dossier de destination\n"
             "Ctrl+P           Préférences\n"
-            "Alt+F4           Quitter\n"
+            "Alt+F4           Quitter"
         )
-        wx.MessageBox(msg, "Raccourcis clavier", wx.OK | wx.ICON_INFORMATION)
+        dlg = wx.Dialog(self, title="Raccourcis clavier", size=(450, 400))
+        sizer = wx.BoxSizer(wx.VERTICAL)
+        txt = wx.TextCtrl(dlg, value=msg, style=wx.TE_MULTILINE | wx.TE_READONLY)
+        sizer.Add(txt, 1, wx.EXPAND | wx.ALL, 10)
+        btn = wx.Button(dlg, wx.ID_CLOSE, "Fermer")
+        btn.Bind(wx.EVT_BUTTON, lambda e: dlg.EndModal(wx.ID_CLOSE))
+        sizer.Add(btn, 0, wx.ALIGN_CENTER | wx.BOTTOM, 10)
+        dlg.SetSizer(sizer)
+        txt.SetInsertionPoint(0)
+        txt.SetFocus()
+        dlg.ShowModal()
+        dlg.Destroy()
 
     def _on_update_app(self, _event) -> None:
         self.mi_update_app.Enable(False)
