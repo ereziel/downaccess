@@ -6,8 +6,10 @@ Un script JS intercepte toutes les requêtes XHR/fetch et les éléments
 <video>/<source> pour détecter les URLs de médias en temps réel.
 La fenêtre DownAccess affiche la liste des médias détectés.
 """
+import base64
 import json
 import logging
+import os
 import threading
 import urllib.request
 
@@ -159,11 +161,24 @@ _MEDIA_EXTENSIONS = (
     ".mp3", ".aac", ".ogg", ".wav", ".opus", ".m4a",
 )
 
+_MANIFEST_EXTENSIONS = (".m3u8", ".mpd")
+
+_BLOCKABLE_EXTENSIONS = (
+    ".mp4", ".m4v", ".webm", ".mkv", ".flv", ".mov", ".ts",
+    ".mp3", ".aac", ".ogg", ".wav", ".opus", ".m4a",
+)
+
 
 def _is_media_url(url: str) -> bool:
     """Filtre les URLs réseau pour ne garder que les médias."""
     low = url.lower().split("?")[0].split("#")[0]
     return any(low.endswith(ext) for ext in _MEDIA_EXTENSIONS)
+
+
+def _is_manifest_url(url: str) -> bool:
+    """Vérifie si l'URL est un manifeste HLS/DASH (à laisser passer)."""
+    low = url.lower().split("?")[0].split("#")[0]
+    return any(low.endswith(ext) for ext in _MANIFEST_EXTENSIONS)
 
 
 def _url_type(url: str) -> str:
@@ -200,6 +215,8 @@ class UGEDialog(wx.Frame):
         self._poll_timer = wx.Timer(self)
         self._page = None  # DrissionPage ChromiumPage
         self._polling = False
+        self._intercept_enabled = False
+        self._intercepted_headers: dict[str, tuple[str, str]] = {}  # url → (referer, cookies)
 
         self._build_ui()
         self._bind_events()
@@ -245,6 +262,15 @@ class UGEDialog(wx.Frame):
         )
         sizer.Add(self.lbl_status, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 8)
 
+        # Interception des tokens
+        self.chk_intercept = wx.CheckBox(
+            panel,
+            label="Intercepter les requêtes (sites avec tokens expirants)",
+            name="Activer l'interception des requêtes média",
+        )
+        self.chk_intercept.SetValue(False)
+        sizer.Add(self.chk_intercept, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 8)
+
         # Liste des médias détectés
         lbl_detected = wx.StaticText(panel, label="Médias détectés :")
         self.lst_media = wx.ListCtrl(
@@ -289,6 +315,7 @@ class UGEDialog(wx.Frame):
     def _bind_events(self) -> None:
         self.btn_go.Bind(wx.EVT_BUTTON, self._on_go)
         self.txt_url.Bind(wx.EVT_TEXT_ENTER, self._on_go)
+        self.chk_intercept.Bind(wx.EVT_CHECKBOX, self._on_toggle_intercept)
         self.btn_clear.Bind(wx.EVT_BUTTON, self._on_clear)
         self.btn_add.Bind(wx.EVT_BUTTON, self._on_add)
         self.btn_close.Bind(wx.EVT_BUTTON, lambda _: self.Close())
@@ -298,6 +325,223 @@ class UGEDialog(wx.Frame):
         self.lst_media.Bind(wx.EVT_KEY_DOWN, self._on_list_key)
         self.Bind(wx.EVT_TIMER, self._on_poll, self._poll_timer)
         self.Bind(wx.EVT_CLOSE, self._on_close)
+
+    # ------------------------------------------------------------------
+    # Interception CDP Fetch (tokens expirants)
+    # ------------------------------------------------------------------
+
+    def _on_toggle_intercept(self, _event) -> None:
+        enabled = self.chk_intercept.GetValue()
+        if self._page is None:
+            self._intercept_enabled = enabled
+            if enabled:
+                speech.speak("L'interception sera activée au lancement du navigateur.")
+            return
+        if enabled:
+            self._enable_fetch_intercept()
+        else:
+            self._disable_fetch_intercept()
+
+    def _enable_fetch_intercept(self) -> None:
+        try:
+            patterns = [
+                {"urlPattern": f"*{ext}*", "requestStage": "Response"}
+                for ext in _MEDIA_EXTENSIONS
+            ]
+            self._page.run_cdp("Fetch.enable", patterns=patterns)
+            self._page.driver.set_callback(
+                "Fetch.requestPaused", self._on_request_paused
+            )
+            self._intercept_enabled = True
+            self._saved_urls: set[str] = set()  # déduplication
+            speech.speak("Interception des requêtes média activée.")
+            _log.info("Fetch interception enabled (Response stage)")
+        except Exception as exc:
+            _log.error("Failed to enable Fetch interception: %s", exc)
+            self.chk_intercept.SetValue(False)
+            self._intercept_enabled = False
+
+    def _disable_fetch_intercept(self) -> None:
+        try:
+            self._page.driver.set_callback("Fetch.requestPaused", None)
+            self._page.run_cdp("Fetch.disable")
+            self._intercept_enabled = False
+            speech.speak("Interception des requêtes média désactivée.")
+            _log.info("Fetch interception disabled")
+        except Exception as exc:
+            _log.error("Failed to disable Fetch interception: %s", exc)
+
+    def _on_request_paused(self, **kwargs) -> None:
+        """Callback CDP Fetch.requestPaused au stade Response (thread Driver).
+        Le navigateur a déjà reçu la réponse. On capture le corps et on
+        sauvegarde sur le disque, puis on laisse le navigateur continuer."""
+        request_id = kwargs.get("requestId")
+        request = kwargs.get("request", {})
+        url = request.get("url", "")
+        status_code = kwargs.get("responseStatusCode", 0)
+
+        _drv = self._page.driver
+
+        if not _is_media_url(url):
+            try:
+                _drv.run("Fetch.continueRequest", requestId=request_id)
+            except Exception:
+                pass
+            return
+
+        _log.info("Fetch response intercepted: %s (status=%d)", url[:120], status_code)
+
+        # Laisser passer les non-200/206
+        if status_code not in (200, 206):
+            _log.info("Fetch: status %d, laisser passer: %s", status_code, url[:120])
+            try:
+                _drv.run("Fetch.continueRequest", requestId=request_id)
+            except Exception:
+                pass
+            return
+
+        # Ignorer les URLs sans token
+        if "?" not in url:
+            _log.info("Fetch: URL sans token, laisser passer: %s", url[:120])
+            try:
+                _drv.run("Fetch.continueRequest", requestId=request_id)
+            except Exception:
+                pass
+            return
+
+        # Déduplication : ne sauvegarder qu'une fois par URL base (sans token)
+        url_base = url.split("?")[0]
+        already_saved = url_base in getattr(self, "_saved_urls", set())
+
+        # Capturer le corps de la réponse
+        body_data = b""
+        if not already_saved:
+            try:
+                body_result = _drv.run(
+                    "Fetch.getResponseBody", requestId=request_id
+                )
+                raw = body_result.get("body", "")
+                is_b64 = body_result.get("base64Encoded", False)
+                _log.info("Fetch body: %d chars, base64=%s", len(raw), is_b64)
+                body_data = base64.b64decode(raw) if is_b64 else raw.encode("utf-8")
+            except Exception as exc:
+                _log.error("Fetch.getResponseBody failed: %s", exc)
+
+        # Toujours laisser le navigateur continuer (l'audio joue normalement)
+        try:
+            _drv.run("Fetch.continueRequest", requestId=request_id)
+        except Exception:
+            pass
+
+        # Sauvegarder dans un thread séparé (pas wx.CallAfter)
+        if body_data and not already_saved:
+            if not hasattr(self, "_saved_urls"):
+                self._saved_urls = set()
+            self._saved_urls.add(url_base)
+            # Récupérer le titre de la page pour le nom du fichier
+            page_title = ""
+            try:
+                page_title = self._page.title or ""
+            except Exception:
+                pass
+            wx.CallAfter(self._add_intercepted_url, url, "", "")
+            wx.CallAfter(self._set_status, "Téléchargement en cours…")
+            wx.CallAfter(speech.speak, "Téléchargement en cours…", interrupt=False)
+            threading.Thread(
+                target=self._save_intercepted_media,
+                args=(url, body_data, page_title),
+                daemon=True,
+            ).start()
+
+    def _add_intercepted_url(self, url: str,
+                             referer: str = "", cookies: str = "") -> None:
+        """Ajoute une URL interceptée à la liste (thread UI via CallAfter)."""
+        if url in self._detected:
+            return
+        self._detected.append(url)
+        # Stocker les headers CDP pour le téléchargement
+        self._intercepted_headers[url] = (referer, cookies)
+        media_type = _url_type(url)
+        idx = self.lst_media.GetItemCount()
+        self.lst_media.InsertItem(idx, f"[I] {media_type}")
+        self.lst_media.SetItem(idx, 1, url)
+        n = self.lst_media.GetItemCount()
+        self.lbl_count.SetLabel(f"{n} média(s) détecté(s)")
+        speech.speak("Média intercepté.", interrupt=False)
+
+    def _save_intercepted_media(self, url: str, data: bytes,
+                                page_title: str = "") -> None:
+        """Sauvegarde les données interceptées sur le disque (thread séparé)."""
+        try:
+            from app.core import settings as cfg
+            settings = cfg.load()
+            dest_dir = settings.get("download_folder", os.path.expanduser("~"))
+
+            # Extension depuis l'URL
+            url_filename = url.split("/")[-1].split("?")[0]
+            ext = os.path.splitext(url_filename)[1] or ".mp3"
+
+            # Nom du fichier : titre de la page ou nom brut de l'URL
+            use_title = settings.get("intercept_use_page_title", True)
+            if use_title and page_title:
+                # Nettoyer le titre pour un nom de fichier Windows valide
+                clean = page_title.strip()
+                for ch in r'<>:"/\|?*':
+                    clean = clean.replace(ch, "")
+                clean = clean.strip(". ")
+                if clean:
+                    filename = clean + ext
+                else:
+                    filename = url_filename or ("media_intercepte" + ext)
+            else:
+                filename = url_filename or ("media_intercepte" + ext)
+
+            filepath = os.path.join(dest_dir, filename)
+
+            # Éviter les doublons
+            base_path, ext = os.path.splitext(filepath)
+            counter = 1
+            while os.path.exists(filepath):
+                filepath = f"{base_path} ({counter}){ext}"
+                counter += 1
+
+            _log.info("Sauvegarde média: %s (%d octets)", filepath, len(data))
+
+            with open(filepath, "wb") as f:
+                f.write(data)
+
+            size_mb = len(data) / (1024 * 1024)
+            _log.info("Média sauvegardé: %s (%.1f Mo)", filepath, size_mb)
+
+            wx.CallAfter(self._on_media_saved, filepath, filename, size_mb)
+        except Exception as exc:
+            _log.error("Erreur sauvegarde média: %s", exc)
+            wx.CallAfter(
+                wx.MessageBox,
+                f"Erreur lors de la sauvegarde :\n{exc}",
+                "Erreur — DownAccess",
+                wx.OK | wx.ICON_ERROR,
+                self,
+            )
+
+    def _on_media_saved(self, filepath: str, filename: str,
+                        size_mb: float) -> None:
+        """Callback UI après sauvegarde réussie."""
+        self._set_status(f"Téléchargement terminé : {filename} ({size_mb:.1f} Mo)")
+        speech.speak(
+            f"Média sauvegardé : {filename} ({size_mb:.1f} Mo)",
+            interrupt=False,
+        )
+        wx.MessageBox(
+            f"Fichier sauvegardé :\n{filepath}\n\nTaille : {size_mb:.1f} Mo",
+            "Média intercepté — DownAccess",
+            wx.OK | wx.ICON_INFORMATION,
+            self,
+        )
+
+    def _set_status(self, text: str) -> None:
+        """Met à jour le label de statut (thread-safe via CallAfter si besoin)."""
+        self.lbl_status.SetLabel(text)
 
     # ------------------------------------------------------------------
     # Navigation
@@ -328,6 +572,8 @@ class UGEDialog(wx.Frame):
             self._browser_name = browser_name(browser_path)
             # Écouter toutes les requêtes réseau (filtrage côté Python)
             self._page.listen.start('')
+            if self._intercept_enabled:
+                self._enable_fetch_intercept()
             return True
         except Exception as exc:
             _log.error("Impossible d'ouvrir le navigateur : %s", exc)
@@ -472,31 +718,34 @@ class UGEDialog(wx.Frame):
         # Normaliser les paramètres de consentement connus
         url = url.replace("accepted=false", "accepted=true")
 
-        # Récupérer le referer et les cookies depuis Chrome
-        referer = None
-        cookies = None
-        if self._page:
-            try:
-                referer = self._page.url
-            except Exception:
-                pass
-            try:
-                cookies = self._page.run_js("document.cookie")
-            except Exception:
-                pass
-
         self.btn_add.Disable()
-        speech.speak("Résolution de l'URL en cours…", interrupt=False)
 
-        def resolve_and_add():
-            final_url = _resolve_redirect(url, referer)
-            wx.CallAfter(self._finish_add, final_url, referer, cookies)
+        # Si URL interceptée via CDP Fetch, utiliser les headers capturés
+        # (inclut les cookies httpOnly invisibles à document.cookie)
+        is_intercepted = self.lst_media.GetItemText(idx, 0).startswith("[I]")
 
-        threading.Thread(target=resolve_and_add, daemon=True).start()
+        if is_intercepted:
+            hdrs = self._intercepted_headers.get(url, ("", ""))
+            referer = hdrs[0] or None
+            cookies = hdrs[1] or None
+            _log.info("Ajout intercepté url=%s cookies=%d chars",
+                      url[:80], len(cookies or ""))
+            speech.speak("Ajout direct du média intercepté…", interrupt=False)
+            wx.CallAfter(self._finish_add, url, referer, cookies, True)
+        else:
+            referer = self._page.url if self._page else None
+            speech.speak("Résolution de l'URL en cours…", interrupt=False)
 
-    def _finish_add(self, url: str, referer: str | None, cookies: str | None) -> None:
+            def resolve_and_add():
+                final_url = _resolve_redirect(url, referer)
+                wx.CallAfter(self._finish_add, final_url, referer, None)
+
+            threading.Thread(target=resolve_and_add, daemon=True).start()
+
+    def _finish_add(self, url: str, referer: str | None, cookies: str | None,
+                    skip_info: bool = False) -> None:
         self.btn_add.Enable()
-        self._on_add_url(url, referer=referer, cookies=cookies)
+        self._on_add_url(url, referer=referer, cookies=cookies, skip_info=skip_info)
         speech.speak("Ajouté à la file de téléchargement.")
 
     # ------------------------------------------------------------------
@@ -507,6 +756,11 @@ class UGEDialog(wx.Frame):
         self._poll_timer.Stop()
         # Fermer le navigateur Chrome
         if self._page:
+            if self._intercept_enabled:
+                try:
+                    self._disable_fetch_intercept()
+                except Exception:
+                    pass
             try:
                 self._page.listen.stop()
             except Exception:

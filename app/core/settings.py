@@ -22,6 +22,7 @@ DEFAULTS: dict = {
     "ytdlp_extra_opts": [],
     "user_email": "",
     "cookie_sites": [],
+    "intercept_use_page_title": False,
 }
 
 

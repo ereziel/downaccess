@@ -1,16 +1,36 @@
 import io
 import logging
+import os
 import re
+import tempfile
 import time
 import threading
 from dataclasses import dataclass, field
 from typing import Callable
+from urllib.parse import urlparse
 
 import yt_dlp
 
 from app.core.ffmpeg_utils import get_ffmpeg_path
 
 _log = logging.getLogger("downaccess.downloader")
+
+
+def _write_cookie_jar(cookie_header: str, url: str) -> str:
+    """Écrit un fichier cookie jar Netscape à partir d'un header Cookie brut.
+    Retourne le chemin du fichier temporaire."""
+    domain = urlparse(url).hostname or ""
+    lines = ["# Netscape HTTP Cookie File"]
+    for pair in cookie_header.split(";"):
+        pair = pair.strip()
+        if not pair or "=" not in pair:
+            continue
+        name, _, value = pair.partition("=")
+        lines.append(f".{domain}\tTRUE\t/\tFALSE\t0\t{name.strip()}\t{value.strip()}")
+    fd, path = tempfile.mkstemp(suffix=".txt", prefix="da_cookies_")
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines) + "\n")
+    return path
 
 
 @dataclass
@@ -72,11 +92,14 @@ class Downloader:
     # ------------------------------------------------------------------
 
     def fetch_info(self, download_id: str, url: str,
-                   use_cookies: bool = False) -> DownloadInfo | None:
+                   use_cookies: bool = False,
+                   referer: str | None = None,
+                   cookies: str | None = None) -> DownloadInfo | None:
         """
         Retourne les métadonnées de l'URL sans télécharger.
         Détecte automatiquement les playlists.
         use_cookies : forcer l'utilisation des cookies (retry après erreur).
+        referer / cookies : headers UGE (extraction guidée).
         """
         # Première passe légère pour détecter les playlists
         flat_opts = {
@@ -89,8 +112,26 @@ class Downloader:
         if self._settings.get("proxy_http"):
             flat_opts["proxy"] = self._settings["proxy_http"]
 
-        # Cookies depuis le navigateur de l'utilisateur
-        if use_cookies or _should_use_cookies(self._settings, url):
+        # Headers UGE (referer du navigateur)
+        headers = {}
+        if self._settings.get("user_agent"):
+            headers["User-Agent"] = self._settings["user_agent"]
+        if referer:
+            headers["Referer"] = referer
+        if headers:
+            flat_opts["http_headers"] = headers
+
+        # Cookies UGE via cookie jar (inclut httpOnly)
+        cookie_jar_path = None
+        if cookies:
+            cookie_jar_path = _write_cookie_jar(cookies, url)
+            flat_opts["cookiefile"] = cookie_jar_path
+
+        # Impersonation navigateur
+        flat_opts["extractor_args"] = {"generic": {"impersonate": [""]}}
+
+        # Cookies depuis le navigateur de l'utilisateur (si pas de cookies UGE)
+        if not cookies and (use_cookies or _should_use_cookies(self._settings, url)):
             from app.core.cookies import apply_cookies
             apply_cookies(flat_opts)
 
@@ -134,6 +175,12 @@ class Downloader:
             raise DownloadError(str(exc)) from exc
         except Exception as exc:
             raise DownloadError(str(exc)) from exc
+        finally:
+            if cookie_jar_path:
+                try:
+                    os.unlink(cookie_jar_path)
+                except OSError:
+                    pass
 
     # ------------------------------------------------------------------
     # Téléchargement
@@ -212,18 +259,22 @@ class Downloader:
             headers["User-Agent"] = self._settings["user_agent"]
         if referer:
             headers["Referer"] = referer
-        if cookies:
-            headers["Cookie"] = cookies
         if headers:
             opts["http_headers"] = headers
 
         opts["ffmpeg_location"] = get_ffmpeg_path(self._settings)
 
+        # Cookies UGE via cookie jar (inclut httpOnly)
+        cookie_jar_path = None
+        if cookies:
+            cookie_jar_path = _write_cookie_jar(cookies, url)
+            opts["cookiefile"] = cookie_jar_path
+
         # Impersonation navigateur pour contourner Cloudflare / HTTP/2 obligatoire
         opts["extractor_args"] = {"generic": {"impersonate": [""]}}
 
-        # Cookies depuis le navigateur de l'utilisateur
-        if use_cookies or _should_use_cookies(self._settings, url):
+        # Cookies depuis le navigateur de l'utilisateur (si pas de cookies UGE)
+        if not cookies and (use_cookies or _should_use_cookies(self._settings, url)):
             from app.core.cookies import apply_cookies
             apply_cookies(opts)
 
@@ -239,39 +290,46 @@ class Downloader:
         subtitle_warning: str | None = None
 
         try:
-            with yt_dlp.YoutubeDL(opts) as ydl:
-                ydl.download([url])
-        except yt_dlp.utils.DownloadError as exc:
-            err_msg = str(exc)
-            if log_buf is not None and on_verbose_log is not None:
-                on_verbose_log(log_buf.getvalue())
-            _log.error("Échec téléchargement id=%s url=%s — %s", download_id, url, err_msg)
-            # Sous-titres inaccessibles → réessayer sans sous-titres,
-            # mais conserver l'erreur comme warning reportable.
-            if "subtitles" in err_msg.lower() and opts.get("writesubtitles"):
-                opts_retry = {k: v for k, v in opts.items()
-                              if k not in ("writesubtitles", "writeautomaticsub",
-                                           "subtitleslangs", "subtitlesformat")}
-                if "postprocessors" in opts_retry:
-                    opts_retry["postprocessors"] = [
-                        pp for pp in opts_retry["postprocessors"]
-                        if pp.get("key") != "FFmpegSubtitlesConvertor"
-                    ]
+            try:
+                with yt_dlp.YoutubeDL(opts) as ydl:
+                    ydl.download([url])
+            except yt_dlp.utils.DownloadError as exc:
+                err_msg = str(exc)
+                if log_buf is not None and on_verbose_log is not None:
+                    on_verbose_log(log_buf.getvalue())
+                _log.error("Échec téléchargement id=%s url=%s — %s", download_id, url, err_msg)
+                # Sous-titres inaccessibles → réessayer sans sous-titres,
+                # mais conserver l'erreur comme warning reportable.
+                if "subtitles" in err_msg.lower() and opts.get("writesubtitles"):
+                    opts_retry = {k: v for k, v in opts.items()
+                                  if k not in ("writesubtitles", "writeautomaticsub",
+                                               "subtitleslangs", "subtitlesformat")}
+                    if "postprocessors" in opts_retry:
+                        opts_retry["postprocessors"] = [
+                            pp for pp in opts_retry["postprocessors"]
+                            if pp.get("key") != "FFmpegSubtitlesConvertor"
+                        ]
+                    try:
+                        with yt_dlp.YoutubeDL(opts_retry) as ydl:
+                            ydl.download([url])
+                        subtitle_warning = err_msg
+                    except yt_dlp.utils.DownloadError as exc2:
+                        raise DownloadError(str(exc2)) from exc2
+                    except Exception as exc2:
+                        raise DownloadError(str(exc2)) from exc2
+                else:
+                    raise DownloadError(err_msg) from exc
+            except Exception as exc:
+                if log_buf is not None and on_verbose_log is not None:
+                    on_verbose_log(log_buf.getvalue())
+                _log.error("Erreur inattendue id=%s url=%s — %s", download_id, url, exc)
+                raise DownloadError(str(exc)) from exc
+        finally:
+            if cookie_jar_path:
                 try:
-                    with yt_dlp.YoutubeDL(opts_retry) as ydl:
-                        ydl.download([url])
-                    subtitle_warning = err_msg
-                except yt_dlp.utils.DownloadError as exc2:
-                    raise DownloadError(str(exc2)) from exc2
-                except Exception as exc2:
-                    raise DownloadError(str(exc2)) from exc2
-            else:
-                raise DownloadError(err_msg) from exc
-        except Exception as exc:
-            if log_buf is not None and on_verbose_log is not None:
-                on_verbose_log(log_buf.getvalue())
-            _log.error("Erreur inattendue id=%s url=%s — %s", download_id, url, exc)
-            raise DownloadError(str(exc)) from exc
+                    os.unlink(cookie_jar_path)
+                except OSError:
+                    pass
 
         if log_buf is not None and on_verbose_log is not None:
             on_verbose_log(log_buf.getvalue())

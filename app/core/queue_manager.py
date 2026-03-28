@@ -20,6 +20,7 @@ class QueueItem:
     playlist_title: str | None = None   # Titre de la playlist parente (organisation dossier)
     playlist_number: int | None = None # Numéro dans la playlist (1-based)
     use_cookies: bool = False          # Forcer les cookies navigateur (retry)
+    skip_info: bool = False             # Passer fetch_info (URL interceptée avec token)
     stop_event:  threading.Event = field(default_factory=threading.Event)
     pause_event: threading.Event = field(default_factory=threading.Event)
 
@@ -77,7 +78,8 @@ class QueueManager:
             referer: str | None = None, cookies: str | None = None,
             playlist_title: str | None = None,
             playlist_number: int | None = None,
-            use_cookies: bool = False) -> str:
+            use_cookies: bool = False,
+            skip_info: bool = False) -> str:
         """Ajoute une URL à la file. Retourne le download_id."""
         dl_id = str(uuid.uuid4())
         item = QueueItem(
@@ -90,6 +92,7 @@ class QueueManager:
             playlist_title=playlist_title,
             playlist_number=playlist_number,
             use_cookies=use_cookies,
+            skip_info=skip_info,
         )
         with self._lock:
             self._queue.append(item)
@@ -187,24 +190,35 @@ class QueueManager:
         dl_id = item.download_id
         _log.info("Démarrage worker id=%s url=%s", dl_id, item.url)
 
-        # 1. Extraction des infos
-        try:
-            info = dl.fetch_info(dl_id, item.url, use_cookies=item.use_cookies)
-            if not info:
-                self._finish(dl_id)
-                return
-            if info.is_playlist:
-                # Déléguer la gestion de la playlist à l'UI
-                _log.info("Playlist détectée id=%s url=%s", dl_id, item.url)
-                self._post(self._on_playlist or self._on_info, info)
-                self._finish(dl_id)
-                return
+        # 1. Extraction des infos (skip si URL interceptée avec token)
+        if item.skip_info:
+            _log.info("Skip fetch_info (URL interceptée) id=%s", dl_id)
+            info = DownloadInfo(
+                download_id=dl_id,
+                url=item.url,
+                title=item.url.split("/")[-1].split("?")[0],
+                site="generic",
+            )
             self._post(self._on_info, info)
-        except DownloadError as exc:
-            _log.error("Erreur fetch_info id=%s — %s", dl_id, exc)
-            self._post(self._on_error, dl_id, str(exc))
-            self._finish(dl_id)
-            return
+        else:
+            try:
+                info = dl.fetch_info(dl_id, item.url, use_cookies=item.use_cookies,
+                                     referer=item.referer, cookies=item.cookies)
+                if not info:
+                    self._finish(dl_id)
+                    return
+                if info.is_playlist:
+                    # Déléguer la gestion de la playlist à l'UI
+                    _log.info("Playlist détectée id=%s url=%s", dl_id, item.url)
+                    self._post(self._on_playlist or self._on_info, info)
+                    self._finish(dl_id)
+                    return
+                self._post(self._on_info, info)
+            except DownloadError as exc:
+                _log.error("Erreur fetch_info id=%s — %s", dl_id, exc)
+                self._post(self._on_error, dl_id, str(exc))
+                self._finish(dl_id)
+                return
 
         if item.stop_event.is_set():
             _log.info("Annulé avant téléchargement id=%s", dl_id)

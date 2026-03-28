@@ -116,6 +116,12 @@ class SettingsDialog(wx.Dialog):
             label="Organiser dans des sous-dossiers par playlist",
             name="Organiser dans des sous-dossiers par playlist")
 
+        # Extraction guidée
+        lbl_uge = wx.StaticText(page, label="Extraction guidée :")
+        self.chk_intercept_title = wx.CheckBox(page,
+            label="Utiliser le titre de la page comme nom de fichier (interception)",
+            name="Utiliser le titre de la page comme nom de fichier")
+
         sizer.Add(lbl_folder,        0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 12)
         sizer.Add(row_folder,        0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 6)
         sizer.Add(lbl_concurrent,    0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 12)
@@ -127,6 +133,8 @@ class SettingsDialog(wx.Dialog):
         sizer.Add(self.chk_open_folder,       0, wx.LEFT | wx.RIGHT | wx.TOP, 6)
         sizer.Add(self.chk_organize,          0, wx.LEFT | wx.RIGHT | wx.TOP, 6)
         sizer.Add(self.chk_organize_playlist, 0, wx.LEFT | wx.RIGHT | wx.TOP, 4)
+        sizer.Add(lbl_uge,                    0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 12)
+        sizer.Add(self.chk_intercept_title,   0, wx.LEFT | wx.RIGHT | wx.TOP, 6)
 
         page.SetSizer(sizer)
         return page
@@ -281,6 +289,7 @@ class SettingsDialog(wx.Dialog):
         self.chk_open_folder.SetValue(s.get("open_folder_when_done", False))
         self.chk_organize.SetValue(s.get("organize_by_site", False))
         self.chk_organize_playlist.SetValue(s.get("organize_by_playlist", False))
+        self.chk_intercept_title.SetValue(s.get("intercept_use_page_title", True))
 
         # Formats
         post = s.get("post_processing", "none")
@@ -319,6 +328,7 @@ class SettingsDialog(wx.Dialog):
         s["open_folder_when_done"]    = self.chk_open_folder.GetValue()
         s["organize_by_site"]         = self.chk_organize.GetValue()
         s["organize_by_playlist"]     = self.chk_organize_playlist.GetValue()
+        s["intercept_use_page_title"] = self.chk_intercept_title.GetValue()
 
         # Formats
         s["post_processing"] = POST_CHOICES[self.choice_post.GetSelection()]

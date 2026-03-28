@@ -753,8 +753,8 @@ class MainWindow(wx.Frame):
 
         dlg = UGEDialog(
             self,
-            on_add_url=lambda url, referer=None, cookies=None:
-                self._enqueue_url(url, referer=referer, cookies=cookies),
+            on_add_url=lambda url, referer=None, cookies=None, skip_info=False:
+                self._enqueue_url(url, referer=referer, cookies=cookies, skip_info=skip_info),
         )
         dlg.Show()
 
@@ -837,7 +837,8 @@ class MainWindow(wx.Frame):
                      referer: str | None = None,
                      cookies: str | None = None,
                      playlist_title: str | None = None,
-                     playlist_number: int | None = None) -> None:
+                     playlist_number: int | None = None,
+                     skip_info: bool = False) -> None:
         # Détection URL mixte vidéo + playlist (ex: YouTube watch?v=...&list=...)
         if not playlist_title and "list=" in url and ("watch?" in url or "/watch/" in url):
             url = self._ask_video_or_playlist(url)
@@ -853,7 +854,8 @@ class MainWindow(wx.Frame):
         dl_id = self._queue.add(url, format_spec=format_spec, format_id=format_id,
                                 referer=referer, cookies=cookies,
                                 playlist_title=playlist_title,
-                                playlist_number=playlist_number)
+                                playlist_number=playlist_number,
+                                skip_info=skip_info)
         label = format_spec.upper() if format_spec != "auto" else "Auto"
         self.download_list.add_item(dl_id, url, site="—", fmt=label)
         # Stocker pour retry et rapport d'erreur
