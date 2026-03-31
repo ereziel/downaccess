@@ -8,19 +8,22 @@ from pathlib import Path
 
 block_cipher = None
 
-# Chemin du binaire ffmpeg embarqué (assets/ffmpeg.exe — voir scripts/update_ffmpeg.py)
+# Binaires embarqués (voir scripts/update_ffmpeg.py)
 FFMPEG_EXE = Path('assets/ffmpeg.exe')
-if not FFMPEG_EXE.exists():
-    raise FileNotFoundError(
-        "assets/ffmpeg.exe introuvable.\n"
-        "Lance d'abord : python scripts/update_ffmpeg.py"
-    )
+FFPLAY_EXE = Path('assets/ffplay.exe')
+for _bin in (FFMPEG_EXE, FFPLAY_EXE):
+    if not _bin.exists():
+        raise FileNotFoundError(
+            f"{_bin} introuvable.\n"
+            "Lance d'abord : python scripts/update_ffmpeg.py"
+        )
 
 a = Analysis(
     ['main.py'],
     pathex=['.'],
     binaries=[
-        (str(FFMPEG_EXE), '.'),  # → _internal/ffmpeg.exe dans le bundle
+        (str(FFMPEG_EXE), '.'),   # → _internal/ffmpeg.exe dans le bundle
+        (str(FFPLAY_EXE), '.'),   # → _internal/ffplay.exe dans le bundle
     ],
     datas=[],
     hiddenimports=[

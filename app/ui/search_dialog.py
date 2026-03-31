@@ -4,14 +4,11 @@ SearchResultsDialog — sélection des résultats
 """
 import subprocess
 import threading
-from pathlib import Path
-
 import wx
 import yt_dlp
 
 from app.core import speech
-
-_FFPLAY = Path(__file__).parent.parent.parent / "assets" / "ffplay.exe"
+from app.core.ffmpeg_utils import get_ffplay_path
 
 # Sites supportés : (label affiché, préfixe yt-dlp)
 _SITES = [
@@ -247,7 +244,7 @@ class SearchResultsDialog(wx.Dialog):
         self._stop_preview(silent=True)
         try:
             self._preview_proc = subprocess.Popen(
-                [str(_FFPLAY), "-nodisp", "-autoexit", "-loglevel", "quiet", stream_url],
+                [get_ffplay_path(), "-nodisp", "-autoexit", "-loglevel", "quiet", stream_url],
                 creationflags=subprocess.CREATE_NO_WINDOW,
             )
         except OSError as e:

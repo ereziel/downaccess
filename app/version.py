@@ -1,3 +1,3 @@
-__version__ = "0.1.9"
+__version__ = "0.1.10"
 APP_NAME = "DownAccess"
 APP_AUTHOR = "math65"
