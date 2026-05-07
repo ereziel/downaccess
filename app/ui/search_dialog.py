@@ -105,11 +105,12 @@ class SearchResultsDialog(wx.Dialog):
         self._build_ui(site_label)
         self._populate()
         self.Bind(wx.EVT_CLOSE, self._on_close)
+        self.Bind(wx.EVT_WINDOW_DESTROY, self._on_destroy)
         self.lst.SetFocus()
         n = len(results)
         speech.speak(
             f"{n} résultat{'s' if n > 1 else ''} trouvé{'s' if n > 1 else ''}. "
-            "Utilisez les flèches pour naviguer, Espace pour cocher."
+            "Utilisez les flèches pour naviguer, Espace pour cocher, Entrée pour l'aperçu."
         )
 
     def _build_ui(self, site_label: str) -> None:
@@ -124,9 +125,10 @@ class SearchResultsDialog(wx.Dialog):
             name="Liste des résultats",
         )
         self.lst.EnableCheckBoxes()
-        self.lst.InsertColumn(0, "Titre",   width=420)
-        self.lst.InsertColumn(1, "Durée",   width=80)
-        self.lst.InsertColumn(2, "Auteur",  width=200)
+        self.lst.InsertColumn(0, "Sélection", width=100)
+        self.lst.InsertColumn(1, "Titre",     width=380)
+        self.lst.InsertColumn(2, "Durée",     width=80)
+        self.lst.InsertColumn(3, "Auteur",    width=200)
         sizer.Add(self.lst, 1, wx.EXPAND | wx.ALL, 8)
 
         # Compteur de sélection
@@ -166,11 +168,13 @@ class SearchResultsDialog(wx.Dialog):
 
         self.lst.Bind(wx.EVT_LIST_ITEM_CHECKED,   self._on_check)
         self.lst.Bind(wx.EVT_LIST_ITEM_UNCHECKED, self._on_check)
-        self.lst.Bind(wx.EVT_LIST_ITEM_ACTIVATED, self._on_preview)
+        self.lst.Bind(wx.EVT_KEY_DOWN, self._on_list_key)
+        self.lst.Bind(wx.EVT_LEFT_DCLICK, self._on_preview)
         self.btn_preview.Bind(wx.EVT_BUTTON, self._on_preview)
         self.btn_all.Bind(wx.EVT_BUTTON,  self._on_select_all)
         self.btn_none.Bind(wx.EVT_BUTTON, self._on_select_none)
         self.Bind(wx.EVT_BUTTON, self._on_download, id=wx.ID_OK)
+        self.Bind(wx.EVT_BUTTON, self._on_cancel,   id=wx.ID_CANCEL)
 
     def _populate(self) -> None:
         for entry in self._results:
@@ -178,27 +182,48 @@ class SearchResultsDialog(wx.Dialog):
             duration = _fmt_duration(entry.get("duration"))
             uploader = entry.get("uploader") or entry.get("channel") or "—"
             idx = self.lst.GetItemCount()
-            self.lst.InsertItem(idx, title)
-            self.lst.SetItem(idx, 1, duration)
-            self.lst.SetItem(idx, 2, uploader)
+            self.lst.InsertItem(idx, "Non coché")
+            self.lst.SetItem(idx, 1, title)
+            self.lst.SetItem(idx, 2, duration)
+            self.lst.SetItem(idx, 3, uploader)
 
-    def _on_check(self, _event) -> None:
+    def _on_check(self, event) -> None:
+        idx = event.GetIndex() if event else -1
+        if idx >= 0:
+            checked = self.lst.IsItemChecked(idx)
+            self.lst.SetItem(idx, 0, "Coché" if checked else "Non coché")
         n = sum(
             1 for i in range(self.lst.GetItemCount())
             if self.lst.IsItemChecked(i)
         )
         self.lbl_count.SetLabel(f"{n} sélectionné(s)")
-        speech.speak(f"{n} sélectionné.", interrupt=False)
+        if idx >= 0:
+            title = self.lst.GetItemText(idx, 1)
+            state = "coché" if checked else "non coché"
+            speech.speak(f"{state}. {title}. {n} sélectionné{'s' if n > 1 else ''}.")
+        else:
+            speech.speak(f"{n} sélectionné{'s' if n > 1 else ''}.")
 
     def _on_select_all(self, _event) -> None:
         for i in range(self.lst.GetItemCount()):
             self.lst.CheckItem(i, True)
+            self.lst.SetItem(i, 0, "Coché")
         self._on_check(None)
 
     def _on_select_none(self, _event) -> None:
         for i in range(self.lst.GetItemCount()):
             self.lst.CheckItem(i, False)
+            self.lst.SetItem(i, 0, "Non coché")
         self._on_check(None)
+
+    # -- Clavier liste --------------------------------------------------
+
+    def _on_list_key(self, event):
+        """Entrée → aperçu ; autres touches → comportement natif."""
+        if event.GetKeyCode() in (wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER):
+            self._on_preview(None)
+        else:
+            event.Skip()
 
     # -- Aperçu audio --------------------------------------------------
 
@@ -282,6 +307,17 @@ class SearchResultsDialog(wx.Dialog):
     def _on_close(self, _event) -> None:
         self._stop_preview(silent=True)
         self.EndModal(wx.ID_CANCEL)
+
+    def _on_cancel(self, _event) -> None:
+        self._stop_preview(silent=True)
+        self.EndModal(wx.ID_CANCEL)
+
+    def _on_destroy(self, event) -> None:
+        if event.GetEventObject() is self:
+            if self._preview_proc and self._preview_proc.poll() is None:
+                self._preview_proc.terminate()
+                self._preview_proc = None
+        event.Skip()
 
     # -- Téléchargement -------------------------------------------------
 
