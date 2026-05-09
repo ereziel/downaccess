@@ -836,17 +836,20 @@ class MainWindow(wx.Frame):
         default_fmt = self.settings.get("post_processing", "none")
         if default_fmt == "none":
             default_fmt = "auto"
-        with AddUrlDialog(self, default_format=default_fmt) as dlg:
+        default_subs = self.settings.get("auto_subtitles", False)
+        with AddUrlDialog(self, default_format=default_fmt,
+                          default_subtitles=default_subs) as dlg:
             if dlg.ShowModal() != wx.ID_OK:
                 return
             urls       = dlg.get_urls()
             fmt_choice = dlg.get_format_choice()
+            subs       = dlg.get_subtitles()
 
         if fmt_choice == FORMAT_MANUAL and len(urls) == 1:
-            self._enqueue_with_format_selection(urls[0])
+            self._enqueue_with_format_selection(urls[0], subtitles_override=subs)
         else:
             for url in urls:
-                self._enqueue_url(url, fmt_choice)
+                self._enqueue_url(url, fmt_choice, subtitles_override=subs)
 
     def _ask_video_or_playlist(self, url: str) -> str | None:
         """
@@ -892,7 +895,8 @@ class MainWindow(wx.Frame):
                      cookies: str | None = None,
                      playlist_title: str | None = None,
                      playlist_number: int | None = None,
-                     skip_info: bool = False) -> None:
+                     skip_info: bool = False,
+                     subtitles_override: bool | None = None) -> None:
         # Détection URL mixte vidéo + playlist (ex: YouTube watch?v=...&list=...)
         if not playlist_title and "list=" in url and ("watch?" in url or "/watch/" in url):
             url = self._ask_video_or_playlist(url)
@@ -909,8 +913,14 @@ class MainWindow(wx.Frame):
                                 referer=referer, cookies=cookies,
                                 playlist_title=playlist_title,
                                 playlist_number=playlist_number,
-                                skip_info=skip_info)
-        label = format_spec.upper() if format_spec != "auto" else "Auto"
+                                skip_info=skip_info,
+                                subtitles_override=subtitles_override)
+        if format_spec == "auto":
+            label = "Auto"
+        elif format_spec == "subtitles_only":
+            label = "Sous-titres"
+        else:
+            label = format_spec.upper()
         self.download_list.add_item(dl_id, url, site="—", fmt=label)
         # Stocker pour retry et rapport d'erreur
         self._dl_data[dl_id] = {
@@ -923,7 +933,8 @@ class MainWindow(wx.Frame):
         self.set_status(f"URL ajoutée : {url}")
         speech.speak(f"Ajouté à la file.", interrupt=False)
 
-    def _enqueue_with_format_selection(self, url: str) -> None:
+    def _enqueue_with_format_selection(self, url: str,
+                                       subtitles_override: bool | None = None) -> None:
         """Fetch info → FormatDialog → enqueue avec format_id."""
         self.set_status("Récupération des formats disponibles…")
         speech.speak("Récupération des formats disponibles.")
@@ -931,7 +942,7 @@ class MainWindow(wx.Frame):
         import threading
         from app.core.downloader import Downloader, DownloadError
 
-        result = {}
+        result = {"subs": subtitles_override}
 
         def fetch():
             try:
@@ -945,6 +956,7 @@ class MainWindow(wx.Frame):
         threading.Thread(target=fetch, daemon=True).start()
 
     def _on_formats_ready(self, url: str, result: dict) -> None:
+        subs = result.get("subs")
         if "error" in result:
             self.set_status("Impossible de récupérer les formats.")
             wx.MessageBox(
@@ -961,14 +973,15 @@ class MainWindow(wx.Frame):
         formats = info.raw_formats if hasattr(info, "raw_formats") else []
         if not formats:
             # Pas de formats détaillés → enqueue en auto
-            self._enqueue_url(url, "auto")
+            self._enqueue_url(url, "auto", subtitles_override=subs)
             self.set_status("Formats non disponibles, téléchargement en qualité auto.")
             return
 
         with FormatDialog(self, info.title, formats) as dlg:
             if dlg.ShowModal() == wx.ID_OK:
                 fmt_id = dlg.get_format_id()
-                self._enqueue_url(url, "manual", format_id=fmt_id)
+                self._enqueue_url(url, "manual", format_id=fmt_id,
+                                  subtitles_override=subs)
             else:
                 self.set_status("Sélection de format annulée.")
 
@@ -1118,21 +1131,24 @@ class MainWindow(wx.Frame):
         default_fmt = self.settings.get("post_processing", "none")
         if default_fmt == "none":
             default_fmt = "auto"
+        default_subs = self.settings.get("auto_subtitles", False)
         with AddUrlDialog(
             self,
             default_format=default_fmt,
             initial_urls="\n".join(urls),
+            default_subtitles=default_subs,
         ) as dlg:
             if dlg.ShowModal() != wx.ID_OK:
                 return
             picked     = dlg.get_urls()
             fmt_choice = dlg.get_format_choice()
+            subs       = dlg.get_subtitles()
 
         if fmt_choice == FORMAT_MANUAL and len(picked) == 1:
-            self._enqueue_with_format_selection(picked[0])
+            self._enqueue_with_format_selection(picked[0], subtitles_override=subs)
         else:
             for url in picked:
-                self._enqueue_url(url, fmt_choice)
+                self._enqueue_url(url, fmt_choice, subtitles_override=subs)
 
     def _on_paste_url(self, _event) -> None:
         """Ctrl+V global : colle l'URL du presse-papiers sans ouvrir de dialogue."""

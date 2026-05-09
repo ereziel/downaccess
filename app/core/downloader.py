@@ -202,6 +202,7 @@ class Downloader:
         playlist_title: str | None = None,
         playlist_number: int | None = None,
         use_cookies: bool = False,
+        subtitles_override: bool | None = None,
     ) -> str | None:
         """
         Télécharge l'URL dans le dossier configuré.
@@ -282,8 +283,16 @@ class Downloader:
             from app.core.cookies import apply_cookies
             apply_cookies(opts)
 
+        # Override des sous-titres pour ce téléchargement
+        eff_settings = dict(self._settings)
+        if subtitles_override is not None:
+            eff_settings["auto_subtitles"] = subtitles_override
+        if format_spec == "subtitles_only":
+            eff_settings["auto_subtitles"] = True
+            opts["skip_download"] = True
+
         _apply_format(opts, format_spec, format_id)
-        _apply_subtitles(opts, self._settings)
+        _apply_subtitles(opts, eff_settings)
 
         # Options yt-dlp supplémentaires (raw)
         for extra in self._settings.get("ytdlp_extra_opts", []):
@@ -293,8 +302,9 @@ class Downloader:
 
         subtitle_warning: str | None = None
 
-        burn_subs = (self._settings.get("auto_subtitles") and
-                     self._settings.get("subtitle_mode") == "burn")
+        burn_subs = (eff_settings.get("auto_subtitles") and
+                     eff_settings.get("subtitle_mode") == "burn"
+                     and not opts.get("skip_download"))
 
         try:
             try:
@@ -434,6 +444,10 @@ def _apply_format(opts: dict, format_spec: str, format_id: str | None = None) ->
             "key": "FFmpegVideoConvertor",
             "preferedformat": "mp4",
         }]
+    elif format_spec == "subtitles_only":
+        # Pas de format vidéo/audio — seuls les sous-titres seront écrits.
+        # skip_download est déjà mis à True par l'appelant.
+        pass
     else:
         # Auto : meilleure qualité disponible
         opts["format"] = "bestvideo+bestaudio/best"

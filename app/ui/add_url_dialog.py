@@ -5,18 +5,20 @@ import wx
 from app.core import speech
 
 # Choix de format (valeur retournée par get_format_choice())
-FORMAT_AUTO   = "auto"
-FORMAT_MP4    = "mp4"
-FORMAT_MP3    = "mp3"
-FORMAT_M4A    = "m4a"
-FORMAT_MANUAL = "manual"
+FORMAT_AUTO       = "auto"
+FORMAT_MP4        = "mp4"
+FORMAT_MP3        = "mp3"
+FORMAT_M4A        = "m4a"
+FORMAT_SUBS_ONLY  = "subtitles_only"
+FORMAT_MANUAL     = "manual"
 
 _FORMAT_CHOICES = [
-    (FORMAT_AUTO,   "Meilleure qualité automatique"),
-    (FORMAT_MP4,    "Vidéo MP4 (H.264)"),
-    (FORMAT_MP3,    "Audio MP3"),
-    (FORMAT_M4A,    "Audio M4A"),
-    (FORMAT_MANUAL, "Choisir le format manuellement…"),
+    (FORMAT_AUTO,      "Meilleure qualité automatique"),
+    (FORMAT_MP4,       "Vidéo MP4 (H.264)"),
+    (FORMAT_MP3,       "Audio MP3"),
+    (FORMAT_M4A,       "Audio M4A"),
+    (FORMAT_SUBS_ONLY, "Sous-titres uniquement"),
+    (FORMAT_MANUAL,    "Choisir le format manuellement…"),
 ]
 
 
@@ -28,7 +30,8 @@ class AddUrlDialog(wx.Dialog):
     """
 
     def __init__(self, parent, default_format: str = "auto",
-                 initial_urls: str = ""):
+                 initial_urls: str = "",
+                 default_subtitles: bool = False):
         super().__init__(
             parent,
             title="Ajouter des URLs",
@@ -36,9 +39,10 @@ class AddUrlDialog(wx.Dialog):
         )
         self._default_format = default_format
         self._initial_urls = initial_urls
+        self._default_subtitles = default_subtitles
         self._build_ui()
         self._bind_events()
-        self.SetMinSize((480, 340))
+        self.SetMinSize((480, 360))
         self.Fit()
         self.CentreOnParent()
 
@@ -78,6 +82,14 @@ class AddUrlDialog(wx.Dialog):
             self.txt_urls.SetValue(self._initial_urls)
             self.txt_urls.SetInsertionPointEnd()
 
+        # Sous-titres (override par URL)
+        self.chk_subtitles = wx.CheckBox(
+            panel,
+            label="Télécharger les sous-titres avec ce média",
+            name="Télécharger les sous-titres avec ce média",
+        )
+        self.chk_subtitles.SetValue(self._default_subtitles)
+
         # Avertissement "Manuel + plusieurs URLs"
         self.lbl_manual_warn = wx.StaticText(
             panel,
@@ -98,6 +110,7 @@ class AddUrlDialog(wx.Dialog):
         main_sizer.Add(self.txt_urls,         1, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 6)
         main_sizer.Add(lbl_fmt,               0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 12)
         main_sizer.Add(self.choice_fmt,       0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 6)
+        main_sizer.Add(self.chk_subtitles,    0, wx.LEFT | wx.RIGHT | wx.TOP, 12)
         main_sizer.Add(self.lbl_manual_warn,  0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 4)
         main_sizer.Add(btn_sizer,             0, wx.EXPAND | wx.ALL, 12)
 
@@ -105,7 +118,8 @@ class AddUrlDialog(wx.Dialog):
 
         # Ordre Tab
         self.choice_fmt.MoveAfterInTabOrder(self.txt_urls)
-        self.btn_ok.MoveAfterInTabOrder(self.choice_fmt)
+        self.chk_subtitles.MoveAfterInTabOrder(self.choice_fmt)
+        self.btn_ok.MoveAfterInTabOrder(self.chk_subtitles)
         self.btn_cancel.MoveAfterInTabOrder(self.btn_ok)
 
         self.txt_urls.SetFocus()
@@ -193,3 +207,6 @@ class AddUrlDialog(wx.Dialog):
         if 0 <= idx < len(_FORMAT_CHOICES):
             return _FORMAT_CHOICES[idx][0]
         return FORMAT_AUTO
+
+    def get_subtitles(self) -> bool:
+        return self.chk_subtitles.GetValue()

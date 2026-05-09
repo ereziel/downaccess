@@ -21,6 +21,7 @@ class QueueItem:
     playlist_number: int | None = None # Numéro dans la playlist (1-based)
     use_cookies: bool = False          # Forcer les cookies navigateur (retry)
     skip_info: bool = False             # Passer fetch_info (URL interceptée avec token)
+    subtitles_override: bool | None = None  # None = utiliser les préférences
     stop_event:  threading.Event = field(default_factory=threading.Event)
     pause_event: threading.Event = field(default_factory=threading.Event)
 
@@ -85,7 +86,8 @@ class QueueManager:
             playlist_title: str | None = None,
             playlist_number: int | None = None,
             use_cookies: bool = False,
-            skip_info: bool = False) -> str:
+            skip_info: bool = False,
+            subtitles_override: bool | None = None) -> str:
         """Ajoute une URL à la file. Retourne le download_id."""
         dl_id = str(uuid.uuid4())
         item = QueueItem(
@@ -99,6 +101,7 @@ class QueueManager:
             playlist_number=playlist_number,
             use_cookies=use_cookies,
             skip_info=skip_info,
+            subtitles_override=subtitles_override,
         )
         with self._lock:
             self._queue.append(item)
@@ -246,6 +249,7 @@ class QueueManager:
                 playlist_title=item.playlist_title,
                 playlist_number=item.playlist_number,
                 use_cookies=item.use_cookies,
+                subtitles_override=item.subtitles_override,
             )
             if warning and self._on_warning:
                 self._post(self._on_warning, dl_id, warning)
