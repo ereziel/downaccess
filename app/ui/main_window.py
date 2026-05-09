@@ -130,6 +130,8 @@ class MainWindow(wx.Frame):
         self._init_queue()
         self._init_clipboard()
         self.Maximize()
+        # Focus initial sur le message — NVDA lit son contenu directement
+        wx.CallAfter(self.lbl_empty.SetFocus)
 
     # ------------------------------------------------------------------
     # Queue
@@ -604,8 +606,24 @@ class MainWindow(wx.Frame):
     def _build_main_panel(self) -> None:
         panel = wx.Panel(self)
         sizer = wx.BoxSizer(wx.VERTICAL)
+
+        # Message affiché quand la liste est vide.
+        # TextCtrl read-only pour que NVDA lise directement le contenu au focus.
+        self.lbl_empty = wx.TextCtrl(
+            panel,
+            value=(
+                "Aucun téléchargement pour le moment.\r\n\r\n"
+                "Ajoutez une URL via le menu Fichier, collez-la depuis le "
+                "presse-papiers, ou utilisez la recherche pour trouver des médias."
+            ),
+            style=wx.TE_MULTILINE | wx.TE_READONLY | wx.BORDER_NONE,
+        )
+        self.lbl_empty.SetBackgroundColour(panel.GetBackgroundColour())
+        sizer.Add(self.lbl_empty, 1, wx.EXPAND | wx.ALL, 24)
+
         self.download_list = DownloadList(panel)
         sizer.Add(self.download_list, 1, wx.EXPAND | wx.ALL, 4)
+        self.download_list.Hide()  # caché tant que la liste est vide
 
         # Barre de progression native
         prog_sizer = wx.BoxSizer(wx.HORIZONTAL)
@@ -1352,6 +1370,18 @@ class MainWindow(wx.Frame):
     def set_count(self, count: int) -> None:
         """Met à jour le compteur de téléchargements dans la barre de statut."""
         self.statusbar.SetStatusText(f"{count} téléchargement(s)", 1)
+        # Bascule entre le message de liste vide et la liste de téléchargements
+        empty = (count == 0)
+        if self.lbl_empty.IsShown() != empty:
+            self.lbl_empty.Show(empty)
+            self.download_list.Show(not empty)
+            self.lbl_empty.GetParent().Layout()
+            # Si le focus était sur le contrôle qu'on vient de cacher, déplace-le
+            focused = self.FindFocus()
+            if empty and focused is self.download_list:
+                self.lbl_empty.SetFocus()
+            elif (not empty) and focused is self.lbl_empty:
+                self.download_list.SetFocus()
 
 
 # ------------------------------------------------------------------
