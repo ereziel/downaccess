@@ -57,6 +57,7 @@ ID_CLIP_TOGGLE  = wx.NewIdRef()
 ID_SEARCH       = wx.NewIdRef()
 ID_UPDATE_APP   = wx.NewIdRef()
 ID_CONTACT      = wx.NewIdRef()
+ID_GITHUB       = wx.NewIdRef()
 
 
 class _AppDownloadDialog(wx.Frame):
@@ -585,6 +586,10 @@ class MainWindow(wx.Frame):
             ID_CONTACT, "&Contacter le support / Faire une suggestion",
             "Envoyer un message, une suggestion ou signaler un problème",
         )
+        self.mi_github = help_menu.Append(
+            ID_GITHUB, "Page &GitHub du projet",
+            "Ouvrir la page GitHub de DownAccess dans le navigateur",
+        )
         help_menu.AppendSeparator()
         self.mi_about = help_menu.Append(
             wx.ID_ABOUT, "À &propos de DownAccess",
@@ -668,6 +673,7 @@ class MainWindow(wx.Frame):
         self.Bind(wx.EVT_MENU, self._on_update_ytdlp,   id=ID_UPDATE_YDL)
         self.Bind(wx.EVT_MENU, self._on_update_app,     id=ID_UPDATE_APP)
         self.Bind(wx.EVT_MENU, self._on_contact,        id=ID_CONTACT)
+        self.Bind(wx.EVT_MENU, self._on_github,         id=ID_GITHUB)
         self.Bind(wx.EVT_MENU, self._on_about,          id=wx.ID_ABOUT)
         self.Bind(wx.EVT_CLOSE, self._on_close)
         self.download_list.Bind(wx.EVT_LIST_ITEM_SELECTED, self._on_list_select)
@@ -1260,6 +1266,9 @@ class MainWindow(wx.Frame):
         )
         dlg.ShowModal()
         dlg.Destroy()
+
+    def _on_github(self, _event) -> None:
+        wx.LaunchDefaultBrowser("https://github.com/math65/downaccess")
 
     def _on_about(self, _event) -> None:
         wx.MessageBox(
