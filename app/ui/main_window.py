@@ -118,6 +118,18 @@ class _AppDownloadDialog(wx.Frame):
             speech.speak("Téléchargement terminé. Installation en cours.")
 
 
+class _URLDropTarget(wx.TextDropTarget):
+    """Accepte du texte glissé-déposé et le transmet au callback."""
+
+    def __init__(self, on_drop):
+        super().__init__()
+        self._on_drop = on_drop
+
+    def OnDropText(self, x, y, text):
+        wx.CallAfter(self._on_drop, text)
+        return True
+
+
 class MainWindow(wx.Frame):
     def __init__(self, parent):
         super().__init__(
@@ -619,7 +631,8 @@ class MainWindow(wx.Frame):
             value=(
                 "Aucun téléchargement pour le moment.\r\n\r\n"
                 "Ajoutez une URL via le menu Fichier, collez-la depuis le "
-                "presse-papiers, ou utilisez la recherche pour trouver des médias."
+                "presse-papiers, glissez-déposez du texte sur cette fenêtre, "
+                "ou utilisez la recherche pour trouver des médias."
             ),
             style=wx.TE_MULTILINE | wx.TE_READONLY | wx.BORDER_NONE,
         )
@@ -642,6 +655,11 @@ class MainWindow(wx.Frame):
         sizer.Add(prog_sizer, 0, wx.EXPAND)
 
         panel.SetSizer(sizer)
+
+        # Glisser-déposer d'URLs (texte) sur la fenêtre principale.
+        panel.SetDropTarget(_URLDropTarget(self._on_url_dropped))
+        self.lbl_empty.SetDropTarget(_URLDropTarget(self._on_url_dropped))
+        self.download_list.SetDropTarget(_URLDropTarget(self._on_url_dropped))
 
     def _build_statusbar(self) -> None:
         self.statusbar = self.CreateStatusBar(2)
@@ -1084,6 +1102,37 @@ class MainWindow(wx.Frame):
             speech.speak("Déplacé vers le bas.", interrupt=False)
         else:
             speech.speak("Impossible de déplacer.", interrupt=False)
+
+    def _on_url_dropped(self, text: str) -> None:
+        """Glisser-déposer de texte : extrait les URLs et ouvre AddUrlDialog pré-rempli."""
+        urls = [u for u in _URL_RE.findall(text or "") if not _is_bare_domain(u)]
+        if not urls:
+            wx.MessageBox(
+                "Le texte déposé ne contient aucune URL valide.",
+                "Aucune URL détectée",
+                wx.OK | wx.ICON_INFORMATION,
+                self,
+            )
+            return
+
+        default_fmt = self.settings.get("post_processing", "none")
+        if default_fmt == "none":
+            default_fmt = "auto"
+        with AddUrlDialog(
+            self,
+            default_format=default_fmt,
+            initial_urls="\n".join(urls),
+        ) as dlg:
+            if dlg.ShowModal() != wx.ID_OK:
+                return
+            picked     = dlg.get_urls()
+            fmt_choice = dlg.get_format_choice()
+
+        if fmt_choice == FORMAT_MANUAL and len(picked) == 1:
+            self._enqueue_with_format_selection(picked[0])
+        else:
+            for url in picked:
+                self._enqueue_url(url, fmt_choice)
 
     def _on_paste_url(self, _event) -> None:
         """Ctrl+V global : colle l'URL du presse-papiers sans ouvrir de dialogue."""

@@ -27,13 +27,15 @@ class AddUrlDialog(wx.Dialog):
     100 % accessible NVDA.
     """
 
-    def __init__(self, parent, default_format: str = "auto"):
+    def __init__(self, parent, default_format: str = "auto",
+                 initial_urls: str = ""):
         super().__init__(
             parent,
             title="Ajouter des URLs",
             style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER,
         )
         self._default_format = default_format
+        self._initial_urls = initial_urls
         self._build_ui()
         self._bind_events()
         self.SetMinSize((480, 340))
@@ -71,6 +73,10 @@ class AddUrlDialog(wx.Dialog):
             0,
         )
         self.choice_fmt.SetSelection(default_idx)
+
+        if self._initial_urls:
+            self.txt_urls.SetValue(self._initial_urls)
+            self.txt_urls.SetInsertionPointEnd()
 
         # Avertissement "Manuel + plusieurs URLs"
         self.lbl_manual_warn = wx.StaticText(
