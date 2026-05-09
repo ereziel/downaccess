@@ -58,6 +58,7 @@ ID_SEARCH       = wx.NewIdRef()
 ID_UPDATE_APP   = wx.NewIdRef()
 ID_CONTACT      = wx.NewIdRef()
 ID_GITHUB       = wx.NewIdRef()
+ID_IMPORT_LIST  = wx.NewIdRef()
 
 
 class _AppDownloadDialog(wx.Frame):
@@ -523,6 +524,10 @@ class MainWindow(wx.Frame):
             ID_SEARCH, "&Rechercher...\tCtrl+F",
             "Rechercher des vidéos ou musiques sur YouTube, SoundCloud, etc.",
         )
+        self.mi_import = file_menu.Append(
+            ID_IMPORT_LIST, "&Importer une liste d'URLs...",
+            "Charger un fichier texte contenant une URL par ligne",
+        )
         file_menu.AppendSeparator()
         self.mi_open_folder = file_menu.Append(
             wx.ID_OPEN, "&Ouvrir le dossier de destination\tCtrl+O",
@@ -692,6 +697,7 @@ class MainWindow(wx.Frame):
         self.Bind(wx.EVT_MENU, self._on_update_app,     id=ID_UPDATE_APP)
         self.Bind(wx.EVT_MENU, self._on_contact,        id=ID_CONTACT)
         self.Bind(wx.EVT_MENU, self._on_github,         id=ID_GITHUB)
+        self.Bind(wx.EVT_MENU, self._on_import_urls,    id=ID_IMPORT_LIST)
         self.Bind(wx.EVT_MENU, self._on_about,          id=wx.ID_ABOUT)
         self.Bind(wx.EVT_CLOSE, self._on_close)
         self.download_list.Bind(wx.EVT_LIST_ITEM_SELECTED, self._on_list_select)
@@ -1115,6 +1121,30 @@ class MainWindow(wx.Frame):
             speech.speak("Déplacé vers le bas.", interrupt=False)
         else:
             speech.speak("Impossible de déplacer.", interrupt=False)
+
+    def _on_import_urls(self, _event) -> None:
+        """Importe un fichier texte contenant des URLs (une par ligne)."""
+        with wx.FileDialog(
+            self,
+            "Importer une liste d'URLs",
+            wildcard="Fichiers texte (*.txt)|*.txt|Tous les fichiers|*",
+            style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST,
+        ) as dlg:
+            if dlg.ShowModal() != wx.ID_OK:
+                return
+            path = dlg.GetPath()
+        try:
+            with open(path, "r", encoding="utf-8", errors="replace") as f:
+                content = f.read()
+        except OSError as exc:
+            wx.MessageBox(
+                f"Impossible de lire le fichier :\n{exc}",
+                "Erreur de lecture",
+                wx.OK | wx.ICON_ERROR,
+                self,
+            )
+            return
+        self._on_url_dropped(content)
 
     def _on_url_dropped(self, text: str) -> None:
         """Glisser-déposer de texte : extrait les URLs et ouvre AddUrlDialog pré-rempli."""
