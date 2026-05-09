@@ -36,19 +36,3 @@ def get_ffmpeg_path(settings: dict) -> str:
         pass
 
     return "ffmpeg"
-
-
-def get_ffplay_path() -> str:
-    """Retourne le chemin vers ffplay à utiliser."""
-    # Bundle PyInstaller (one-dir) : ffplay.exe est dans _internal/
-    if getattr(sys, "frozen", False):
-        bundled = Path(sys.executable).parent / "_internal" / "ffplay.exe"
-        if bundled.exists():
-            return str(bundled)
-
-    # Développement : assets/ffplay.exe
-    dev_path = Path(__file__).parent.parent.parent / "assets" / "ffplay.exe"
-    if dev_path.exists():
-        return str(dev_path)
-
-    return "ffplay"

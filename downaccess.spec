@@ -10,20 +10,17 @@ block_cipher = None
 
 # Binaires embarqués (voir scripts/update_ffmpeg.py)
 FFMPEG_EXE = Path('assets/ffmpeg.exe')
-FFPLAY_EXE = Path('assets/ffplay.exe')
-for _bin in (FFMPEG_EXE, FFPLAY_EXE):
-    if not _bin.exists():
-        raise FileNotFoundError(
-            f"{_bin} introuvable.\n"
-            "Lance d'abord : python scripts/update_ffmpeg.py"
-        )
+if not FFMPEG_EXE.exists():
+    raise FileNotFoundError(
+        f"{FFMPEG_EXE} introuvable.\n"
+        "Lance d'abord : python scripts/update_ffmpeg.py"
+    )
 
 a = Analysis(
     ['main.py'],
     pathex=['.'],
     binaries=[
         (str(FFMPEG_EXE), '.'),   # → _internal/ffmpeg.exe dans le bundle
-        (str(FFPLAY_EXE), '.'),   # → _internal/ffplay.exe dans le bundle
     ],
     datas=[],
     hiddenimports=[
@@ -31,6 +28,7 @@ a = Analysis(
         'wx',
         'wx._core',
         'wx.html2',
+        'wx.media',
         # accessible_output2
         'accessible_output2',
         'accessible_output2.outputs',

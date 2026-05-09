@@ -1,5 +1,5 @@
 """
-update_ffmpeg.py — Télécharge ffmpeg et ffplay depuis yt-dlp/FFmpeg-Builds et les place dans assets/.
+update_ffmpeg.py — Télécharge ffmpeg depuis yt-dlp/FFmpeg-Builds et le place dans assets/.
 
 Usage :
     python scripts/update_ffmpeg.py
@@ -25,7 +25,6 @@ VERSION_FILE = ASSETS_DIR / "ffmpeg_version.txt"
 # Binaires à extraire : nom dans le zip → chemin de sortie
 _BINARIES = {
     "ffmpeg.exe": ASSETS_DIR / "ffmpeg.exe",
-    "ffplay.exe": ASSETS_DIR / "ffplay.exe",
 }
 
 
@@ -40,7 +39,7 @@ def _progress(downloaded: int, total: int) -> None:
 def main() -> int:
     ASSETS_DIR.mkdir(parents=True, exist_ok=True)
 
-    print(f"Téléchargement de ffmpeg + ffplay (yt-dlp/FFmpeg-Builds)...")
+    print(f"Téléchargement de ffmpeg (yt-dlp/FFmpeg-Builds)...")
     print(f"  URL : {RELEASE_URL}")
 
     try:
@@ -88,7 +87,7 @@ def main() -> int:
     )
     print(f"  Version: {VERSION_FILE}")
 
-    print("\nOK  ffmpeg + ffplay mis a jour avec succes.")
+    print("\nOK  ffmpeg mis a jour avec succes.")
     return 0
 
 
