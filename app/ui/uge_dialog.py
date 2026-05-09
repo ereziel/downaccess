@@ -11,6 +11,7 @@ import json
 import logging
 import os
 import threading
+import time
 import urllib.request
 
 import wx
@@ -217,6 +218,7 @@ class UGEDialog(wx.Frame):
         self._polling = False
         self._intercept_enabled = False
         self._intercepted_headers: dict[str, tuple[str, str]] = {}  # url → (referer, cookies)
+        self._save_threads: list[threading.Thread] = []  # threads de sauvegarde média en cours
 
         self._build_ui()
         self._bind_events()
@@ -440,11 +442,13 @@ class UGEDialog(wx.Frame):
             wx.CallAfter(self._add_intercepted_url, url, "", "")
             wx.CallAfter(self._set_status, "Téléchargement en cours…")
             wx.CallAfter(speech.speak, "Téléchargement en cours…", interrupt=False)
-            threading.Thread(
+            t = threading.Thread(
                 target=self._save_intercepted_media,
                 args=(url, body_data, page_title),
                 daemon=True,
-            ).start()
+            )
+            t.start()
+            self._save_threads.append(t)
 
     def _add_intercepted_url(self, url: str,
                              referer: str = "", cookies: str = "") -> None:
@@ -533,8 +537,8 @@ class UGEDialog(wx.Frame):
         )
 
     def _set_status(self, text: str) -> None:
-        """Met à jour le label de statut (thread-safe via CallAfter si besoin)."""
-        self.lbl_status.SetLabel(text)
+        """Met à jour le label de statut (thread-safe : CallAfter inconditionnel)."""
+        wx.CallAfter(self.lbl_status.SetLabel, text)
 
     # ------------------------------------------------------------------
     # Navigation
@@ -747,6 +751,17 @@ class UGEDialog(wx.Frame):
 
     def _on_close(self, event) -> None:
         self._poll_timer.Stop()
+
+        # Attendre les sauvegardes média en cours pour éviter les fichiers tronqués
+        active_saves = [t for t in self._save_threads if t.is_alive()]
+        if active_saves:
+            deadline = time.monotonic() + 5.0
+            for t in active_saves:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    break
+                t.join(timeout=remaining)
+
         # Fermer le navigateur Chrome
         if self._page:
             if self._intercept_enabled:

@@ -1,25 +1,28 @@
 """
-release.py — Bump version, build installeur Inno Setup, crée la release GitHub.
+release.py — Bump version, build, génère l'installeur et publie la release GitHub.
 
 Usage :
-    python scripts/release.py 0.1.3
+    python scripts/release.py 0.1.13
 
-Les release notes sont générées automatiquement depuis git log (commits
-depuis le dernier tag). Aucune saisie requise.
+Les release notes sont prises depuis RELEASE_NOTES.md si présent, sinon
+générées depuis git log (commits depuis le dernier tag).
 
 Prérequis :
-  - Build déjà fait (python scripts/build.py)
+  - venv activé (pour PyInstaller via build.py)
   - gh CLI installé et authentifié
   - Inno Setup 6 installé dans le chemin standard
 
-Étapes :
-  1. Vérifie que le build existe
-  2. Génère les release notes depuis git log
-  3. Bumpe la version dans app/version.py et installer/downaccess.iss
+Étapes (ordre important — la version DOIT être bumpée AVANT le build,
+sinon l'auto-update boucle car l'exe contiendrait l'ancienne version) :
+  1. Bumpe la version dans app/version.py et installer/downaccess.iss
+  2. Lance scripts/build.py (PyInstaller + smoke test)
+  3. Génère les release notes
   4. Commit + push
   5. Lance Inno Setup → installer_output/DownAccess-Setup.exe
-  6. Crée le tag git et la release GitHub avec l'installeur en pièce jointe
+  6. Calcule SHA-256 de l'installeur → DownAccess-Setup.exe.sha256
+  7. Crée la release GitHub avec installeur + .sha256 en pièces jointes
 """
+import hashlib
 import re
 import subprocess
 import sys
@@ -30,7 +33,10 @@ EXE          = ROOT / "dist" / "DownAccess" / "DownAccess.exe"
 VERSION_PY   = ROOT / "app" / "version.py"
 ISS_FILE     = ROOT / "installer" / "downaccess.iss"
 INSTALLER    = ROOT / "installer_output" / "DownAccess-Setup.exe"
+SHA_FILE     = ROOT / "installer_output" / "DownAccess-Setup.exe.sha256"
+BUILD_PY     = ROOT / "scripts" / "build.py"
 ISCC         = Path(r"C:\Users\mathi\AppData\Local\Programs\Inno Setup 6\ISCC.exe")
+VENV_PY      = ROOT / "venv" / "Scripts" / "python.exe"
 
 
 def run(cmd: list, **kw) -> subprocess.CompletedProcess:
@@ -56,10 +62,10 @@ def ok(msg: str) -> None:
 
 def _generate_notes(tag: str) -> str:
     """
-    Génère les release notes.
-    Priorité :
-      1. RELEASE_NOTES.md à la racine (rédigé manuellement avant la release)
-      2. Auto-généré depuis git log (commits depuis le dernier tag)
+    Genere les release notes.
+    Priorite :
+      1. RELEASE_NOTES.md a la racine (redige manuellement avant la release)
+      2. Auto-genere depuis git log (commits depuis le dernier tag)
     """
     rn_file = ROOT / "RELEASE_NOTES.md"
     if rn_file.exists():
@@ -67,7 +73,7 @@ def _generate_notes(tag: str) -> str:
         print(f"  (source : RELEASE_NOTES.md)")
         return notes
 
-    # Auto-génération depuis git log
+    # Auto-generation depuis git log
     print(f"  (source : git log automatique)")
     result = subprocess.run(
         ["git", "describe", "--tags", "--abbrev=0"],
@@ -98,33 +104,27 @@ def _generate_notes(tag: str) -> str:
     return notes
 
 
+def _file_sha256(path: Path) -> str:
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        while True:
+            chunk = f.read(65536)
+            if not chunk:
+                break
+            h.update(chunk)
+    return h.hexdigest().lower()
+
+
 def main() -> int:
     if len(sys.argv) < 2:
         print("Usage : python scripts/release.py <version>")
-        print("  Ex  : python scripts/release.py 0.1.3")
+        print("  Ex  : python scripts/release.py 0.1.13")
         return 1
 
     version = sys.argv[1].lstrip("v")
     tag     = f"v{version}"
 
-    # 1. Vérifier le build
-    step("Verification du build...")
-    if not EXE.exists():
-        print(f"  ERR Build introuvable : {EXE}")
-        print("  -> Lance d'abord : python scripts/build.py")
-        return 1
-    ok(f"Build trouve : {EXE}")
-
-    # 2. Générer les release notes
-    step("Generation des release notes depuis git log...")
-    notes = _generate_notes(tag)
-    try:
-        print(notes)
-    except UnicodeEncodeError:
-        print(notes.encode("ascii", errors="replace").decode())
-    ok("Release notes generees")
-
-    # 3. Bumper version.py
+    # 1. Bumper version AVANT le build (l'exe doit contenir la nouvelle version)
     step(f"Bump version -> {version}...")
     content = VERSION_PY.read_text(encoding="utf-8")
     content = re.sub(r'__version__\s*=\s*"[^"]+"', f'__version__ = "{version}"', content)
@@ -135,6 +135,24 @@ def main() -> int:
     content = re.sub(r'AppVersion=[\d.]+', f'AppVersion={version}', content)
     ISS_FILE.write_text(content, encoding="utf-8")
     ok(f"installer/downaccess.iss -> {version}")
+
+    # 2. Build (PyInstaller + smoke test)
+    step("Build PyInstaller...")
+    py = str(VENV_PY) if VENV_PY.exists() else sys.executable
+    run([py, str(BUILD_PY)], cwd=ROOT)
+    if not EXE.exists():
+        print(f"  ERR Exe introuvable apres build : {EXE}")
+        return 1
+    ok(f"Exe genere : {EXE}")
+
+    # 3. Generer les release notes
+    step("Generation des release notes...")
+    notes = _generate_notes(tag)
+    try:
+        print(notes)
+    except UnicodeEncodeError:
+        print(notes.encode("ascii", errors="replace").decode())
+    ok("Release notes generees")
 
     # 4. Commit + push
     step("Commit et push...")
@@ -157,11 +175,17 @@ def main() -> int:
     size_mb = INSTALLER.stat().st_size / 1_048_576
     ok(f"Installeur genere ({size_mb:.1f} Mo)")
 
-    # 6. Release GitHub
+    # 6. SHA-256 de l'installeur (verifie par l'auto-updater cote client)
+    step("Generation du SHA-256...")
+    sha_hex = _file_sha256(INSTALLER)
+    SHA_FILE.write_text(f"{sha_hex}  {INSTALLER.name}\n", encoding="utf-8")
+    ok(f"SHA-256 : {sha_hex}")
+
+    # 7. Release GitHub (installeur + .sha256)
     step(f"Creation de la release GitHub {tag}...")
     run([
         "gh", "release", "create", tag,
-        str(INSTALLER),
+        str(INSTALLER), str(SHA_FILE),
         "--title", f"DownAccess {tag}",
         "--notes", notes,
     ], cwd=ROOT)

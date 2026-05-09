@@ -74,6 +74,12 @@ class QueueManager:
     def max_concurrent(self) -> int:
         return self._settings.get("max_concurrent_downloads", 2)
 
+    @property
+    def active_count(self) -> int:
+        """Nombre de téléchargements actuellement en cours (thread-safe)."""
+        with self._lock:
+            return len(self._active)
+
     def add(self, url: str, format_spec: str = "auto", format_id: str | None = None,
             referer: str | None = None, cookies: str | None = None,
             playlist_title: str | None = None,

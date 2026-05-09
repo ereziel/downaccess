@@ -1,5 +1,6 @@
 import re
 import subprocess
+import time
 from urllib.parse import urlparse
 
 import wx
@@ -68,7 +69,10 @@ class _AppDownloadDialog(wx.Frame):
         super().__init__(
             parent,
             title=f"Téléchargement de DownAccess {version}",
-            style=wx.DEFAULT_FRAME_STYLE & ~(wx.RESIZE_BORDER | wx.MAXIMIZE_BOX | wx.MINIMIZE_BOX),
+            style=(
+                wx.DEFAULT_FRAME_STYLE
+                & ~(wx.RESIZE_BORDER | wx.MAXIMIZE_BOX | wx.MINIMIZE_BOX)
+            ) | wx.STAY_ON_TOP,
             size=(420, 130),
         )
         self._build_ui(version)
@@ -93,6 +97,16 @@ class _AppDownloadDialog(wx.Frame):
         sizer.Add(self._gauge,   0, wx.EXPAND | wx.LEFT | wx.RIGHT, 12)
         sizer.Add(self._lbl_pct, 0, wx.LEFT | wx.TOP,   12)
         panel.SetSizer(sizer)
+
+        # Frame sizer pour que le panel remplisse correctement la frame
+        frame_sizer = wx.BoxSizer(wx.VERTICAL)
+        frame_sizer.Add(panel, 1, wx.EXPAND)
+        self.SetSizer(frame_sizer)
+        self.Layout()
+
+    def focus_gauge(self) -> None:
+        """Donne le focus à la gauge pour que NVDA suive la progression."""
+        self._gauge.SetFocus()
 
     def update(self, percent: float) -> None:
         pct = int(min(max(percent, 0), 100))
@@ -1140,6 +1154,7 @@ class MainWindow(wx.Frame):
 
     def _on_app_update_checked(self, status: str, info: str, release_notes: str = "") -> None:
         self.mi_update_app.Enable(True)
+        update_started = False
         if status == "up_to_date":
             msg = f"DownAccess est à jour. Version {info}."
             self.set_status(msg)
@@ -1155,6 +1170,9 @@ class MainWindow(wx.Frame):
                 self.mi_update_app.Enable(False)
                 self._app_dl_progress_dlg = _AppDownloadDialog(self, info)
                 self._app_dl_progress_dlg.Show()
+                self._app_dl_progress_dlg.Raise()
+                self._app_dl_progress_dlg.focus_gauge()
+                update_started = True
                 app_updater.download_and_install(
                     new_version=info,
                     on_progress=lambda pct: wx.CallAfter(self._on_app_dl_progress, pct),
@@ -1175,7 +1193,9 @@ class MainWindow(wx.Frame):
                 wx.OK | wx.ICON_ERROR,
                 self,
             )
-        wx.CallAfter(self.download_list.SetFocus)
+        # Ne pas voler le focus au dialogue de progression s'il vient d'ouvrir
+        if not update_started:
+            wx.CallAfter(self.download_list.SetFocus)
 
     def _on_app_dl_progress(self, percent: float) -> None:
         self.set_status(f"Téléchargement de la mise à jour… {percent:.0f} %")
@@ -1236,6 +1256,27 @@ class MainWindow(wx.Frame):
         )
 
     def _on_close(self, event) -> None:
+        n_active = self._queue.active_count
+        if n_active > 0 and event.CanVeto():
+            result = wx.MessageBox(
+                f"{n_active} téléchargement(s) en cours.\n\n"
+                "Quitter maintenant les annulera.\n\n"
+                "Voulez-vous vraiment quitter ?",
+                "Téléchargements en cours — DownAccess",
+                wx.YES_NO | wx.NO_DEFAULT | wx.ICON_QUESTION,
+                self,
+            )
+            if result != wx.YES:
+                event.Veto()
+                return
+
+        if n_active > 0:
+            self._queue.cancel_all()
+            deadline = time.monotonic() + 3.0
+            while self._queue.active_count > 0 and time.monotonic() < deadline:
+                wx.Yield()
+                time.sleep(0.05)
+
         cfg.save(self.settings)
         event.Skip()
 

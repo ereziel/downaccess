@@ -15,6 +15,7 @@ Sécurités :
 - L'app ne se ferme que si le processus installeur a bien démarré
 - Aucune exception ne peut crasher l'app silencieusement
 """
+import hashlib
 import os
 import subprocess
 import tempfile
@@ -25,10 +26,37 @@ import json
 
 from app.version import __version__
 
-GITHUB_API  = "https://api.github.com/repos/math65/downaccess/releases/latest"
-ASSET_NAME  = "DownAccess-Setup.exe"
+GITHUB_API   = "https://api.github.com/repos/math65/downaccess/releases/latest"
+ASSET_NAME   = "DownAccess-Setup.exe"
 DOWNLOAD_URL = f"https://github.com/math65/downaccess/releases/latest/download/{ASSET_NAME}"
+CHECKSUM_URL = DOWNLOAD_URL + ".sha256"
 _UA = f"DownAccess/{__version__} (Windows; updater)"
+
+
+def _fetch_expected_sha256() -> str | None:
+    """Récupère le SHA-256 attendu de la release GitHub. Retourne None si absent."""
+    try:
+        req = urllib.request.Request(CHECKSUM_URL)
+        req.add_header("User-Agent", _UA)
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            content = resp.read().decode("utf-8", errors="replace").strip()
+        if not content:
+            return None
+        # Format sha256sum standard : "<hex>  <filename>" — on prend le premier champ
+        return content.split()[0].lower()
+    except Exception:
+        return None
+
+
+def _file_sha256(path: str) -> str:
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        while True:
+            chunk = f.read(65536)
+            if not chunk:
+                break
+            h.update(chunk)
+    return h.hexdigest().lower()
 
 
 # ---------------------------------------------------------------------------
@@ -128,6 +156,7 @@ def download_and_install(new_version: str, on_progress, on_error,
                 total      = int(resp.headers.get("Content-Length", 0))
                 downloaded = 0
                 chunk_size = 65536  # 64 Ko
+                last_pct   = -1
                 with open(tmp_path, "wb") as f:
                     while True:
                         buf = resp.read(chunk_size)
@@ -136,7 +165,10 @@ def download_and_install(new_version: str, on_progress, on_error,
                         f.write(buf)
                         downloaded += len(buf)
                         if total > 0:
-                            on_progress(downloaded / total * 100)
+                            pct = int(downloaded / total * 100)
+                            if pct != last_pct:
+                                on_progress(pct)
+                                last_pct = pct
 
         except Exception as exc:
             # Supprimer le fichier partiel
@@ -157,7 +189,32 @@ def download_and_install(new_version: str, on_progress, on_error,
             on_error(f"Fichier téléchargé trop petit ({size} octets) — corrompu ?")
             return
 
-        # Renommer seulement si le téléchargement est complet
+        # Vérification d'intégrité SHA-256 (toujours requise — refus si absent)
+        expected_sha = _fetch_expected_sha256()
+        if not expected_sha:
+            try:
+                os.remove(tmp_path)
+            except OSError:
+                pass
+            on_error(
+                "Impossible de récupérer la somme de contrôle (SHA-256) de la nouvelle version.\n"
+                "Mise à jour annulée par sécurité — réessayez plus tard."
+            )
+            return
+
+        actual_sha = _file_sha256(tmp_path)
+        if actual_sha != expected_sha:
+            try:
+                os.remove(tmp_path)
+            except OSError:
+                pass
+            on_error(
+                "Vérification d'intégrité échouée : le fichier téléchargé ne correspond pas\n"
+                "à la somme de contrôle officielle. Mise à jour annulée par sécurité."
+            )
+            return
+
+        # Renommer seulement si le téléchargement est complet et vérifié
         try:
             os.rename(tmp_path, dest_path)
         except OSError as exc:
