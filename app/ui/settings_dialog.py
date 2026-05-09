@@ -13,6 +13,13 @@ POST_LABELS  = ["Aucun (fichier brut)", "Vidéo MP4 (H.264)", "Audio MP3", "Audi
 SUBTITLE_FORMAT_CHOICES = ["srt", "vtt", "original"]
 SUBTITLE_FORMAT_LABELS  = ["SRT", "VTT", "Original (sans conversion)"]
 
+SUBTITLE_MODE_CHOICES = ["separate", "embed", "burn"]
+SUBTITLE_MODE_LABELS  = [
+    "Fichier séparé (.srt à côté de la vidéo)",
+    "Inclus dans le conteneur (piste désactivable)",
+    "Incrustés dans l'image (ré-encode la vidéo, plus lent)",
+]
+
 # Limiteur de vitesse : (octets/sec, libellé). 0 = illimité.
 RATELIMIT_PRESETS = [
     (0,                "Illimité"),
@@ -195,10 +202,20 @@ class SettingsDialog(wx.Dialog):
             name="Format des sous-titres",
         )
 
+        self.choice_submode = wx.RadioBox(
+            page,
+            label="Mode des sous-titres",
+            choices=SUBTITLE_MODE_LABELS,
+            majorDimension=1,
+            style=wx.RA_SPECIFY_COLS,
+            name="Mode des sous-titres",
+        )
+
         sizer.Add(self.chk_auto_subs, 0, wx.LEFT | wx.RIGHT | wx.TOP, 12)
         sizer.Add(lbl_langs,          0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 12)
         sizer.Add(self.txt_langs,     0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 6)
         sizer.Add(self.choice_subfmt, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 12)
+        sizer.Add(self.choice_submode, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 12)
 
         page.SetSizer(sizer)
         return page
@@ -325,6 +342,9 @@ class SettingsDialog(wx.Dialog):
         subfmt = s.get("subtitle_format", "srt")
         sfmt_idx = SUBTITLE_FORMAT_CHOICES.index(subfmt) if subfmt in SUBTITLE_FORMAT_CHOICES else 0
         self.choice_subfmt.SetSelection(sfmt_idx)
+        submode = s.get("subtitle_mode", "separate")
+        smode_idx = SUBTITLE_MODE_CHOICES.index(submode) if submode in SUBTITLE_MODE_CHOICES else 0
+        self.choice_submode.SetSelection(smode_idx)
 
         # Réseau
         self.txt_proxy_http.SetValue(s.get("proxy_http", ""))
@@ -364,6 +384,7 @@ class SettingsDialog(wx.Dialog):
         langs_raw = self.txt_langs.GetValue()
         s["subtitle_langs"]  = [l.strip() for l in langs_raw.split(",") if l.strip()]
         s["subtitle_format"] = SUBTITLE_FORMAT_CHOICES[self.choice_subfmt.GetSelection()]
+        s["subtitle_mode"]   = SUBTITLE_MODE_CHOICES[self.choice_submode.GetSelection()]
 
         # Réseau
         s["proxy_http"]  = self.txt_proxy_http.GetValue().strip()

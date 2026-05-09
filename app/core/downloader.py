@@ -293,9 +293,20 @@ class Downloader:
 
         subtitle_warning: str | None = None
 
+        burn_subs = (self._settings.get("auto_subtitles") and
+                     self._settings.get("subtitle_mode") == "burn")
+
         try:
             try:
                 with yt_dlp.YoutubeDL(opts) as ydl:
+                    if burn_subs:
+                        ydl.add_post_processor(
+                            _BurnSubtitlesPP(
+                                downloader=ydl,
+                                ffmpeg_path=get_ffmpeg_path(self._settings),
+                            ),
+                            when="post_process",
+                        )
                     ydl.download([url])
             except yt_dlp.utils.DownloadError as exc:
                 err_msg = str(exc)
@@ -443,6 +454,84 @@ def _apply_subtitles(opts: dict, settings: dict) -> None:
             "key":    "FFmpegSubtitlesConvertor",
             "format": subfmt,
         })
+    mode = settings.get("subtitle_mode", "separate")
+    if mode == "embed":
+        opts.setdefault("postprocessors", []).append({
+            "key": "FFmpegEmbedSubtitle",
+            "already_have_subtitle": False,
+        })
+
+
+class _BurnSubtitlesPP(yt_dlp.postprocessor.PostProcessor):
+    """Incruste les sous-titres dans la vidéo en ré-encodant via ffmpeg.
+
+    Utilisé quand `subtitle_mode = "burn"`. Copie le fichier de sous-titres
+    sous un nom sûr dans le dossier de la vidéo pour éviter les soucis
+    d'échappement du filtre `subtitles=` de ffmpeg, lance ffmpeg, puis
+    remplace la vidéo originale.
+    """
+
+    def __init__(self, downloader=None, ffmpeg_path: str = "ffmpeg"):
+        super().__init__(downloader)
+        self._ffmpeg_path = ffmpeg_path
+
+    def run(self, info):
+        import shutil
+        import subprocess as sp
+        from pathlib import Path
+
+        video_path = info.get("filepath")
+        subs = info.get("requested_subtitles") or {}
+        if not video_path or not subs:
+            return [], info
+
+        sub_path = None
+        for data in subs.values():
+            if data and data.get("filepath"):
+                sub_path = data["filepath"]
+                break
+        if not sub_path or not os.path.exists(sub_path):
+            return [], info
+
+        video_p = Path(video_path)
+        sub_p   = Path(sub_path)
+        safe_sub = video_p.parent / ("_burn_sub" + sub_p.suffix)
+        out_path = video_p.with_name(video_p.stem + ".burn" + video_p.suffix)
+
+        try:
+            shutil.copy2(sub_path, safe_sub)
+            cmd = [
+                self._ffmpeg_path, "-y",
+                "-i", video_p.name,
+                "-vf", f"subtitles={safe_sub.name}",
+                "-c:a", "copy",
+                out_path.name,
+            ]
+            result = sp.run(cmd, cwd=str(video_p.parent),
+                            capture_output=True, text=True)
+            if result.returncode != 0:
+                self.report_warning(
+                    f"Incrustation des sous-titres échouée : "
+                    f"{(result.stderr or '')[:300]}"
+                )
+                if out_path.exists():
+                    try:
+                        out_path.unlink()
+                    except OSError:
+                        pass
+                return [], info
+            os.replace(str(out_path), video_path)
+        except Exception as exc:
+            self.report_warning(f"Erreur incrustation : {exc}")
+            return [], info
+        finally:
+            if safe_sub.exists():
+                try:
+                    safe_sub.unlink()
+                except OSError:
+                    pass
+
+        return [sub_path], info
 
 
 def _sanitize_dirname(name: str) -> str:
