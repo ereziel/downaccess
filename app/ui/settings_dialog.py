@@ -13,6 +13,19 @@ POST_LABELS  = ["Aucun (fichier brut)", "Vidéo MP4 (H.264)", "Audio MP3", "Audi
 SUBTITLE_FORMAT_CHOICES = ["srt", "vtt", "original"]
 SUBTITLE_FORMAT_LABELS  = ["SRT", "VTT", "Original (sans conversion)"]
 
+# Limiteur de vitesse : (octets/sec, libellé). 0 = illimité.
+RATELIMIT_PRESETS = [
+    (0,                "Illimité"),
+    (256 * 1024,       "256 Ko/s"),
+    (512 * 1024,       "512 Ko/s"),
+    (1 * 1024 * 1024,  "1 Mo/s"),
+    (2 * 1024 * 1024,  "2 Mo/s"),
+    (5 * 1024 * 1024,  "5 Mo/s"),
+    (10 * 1024 * 1024, "10 Mo/s"),
+]
+RATELIMIT_VALUES = [v for v, _ in RATELIMIT_PRESETS]
+RATELIMIT_LABELS = [l for _, l in RATELIMIT_PRESETS]
+
 
 class SettingsDialog(wx.Dialog):
     """
@@ -207,6 +220,14 @@ class SettingsDialog(wx.Dialog):
         lbl_ua = wx.StaticText(page, label="User-Agent personnalisé (laisser vide = défaut) :")
         self.txt_useragent = wx.TextCtrl(page, name="User-Agent")
 
+        lbl_ratelimit = wx.StaticText(page, label="Limite de vitesse de téléchargement :")
+        self.choice_ratelimit = wx.Choice(
+            page,
+            choices=RATELIMIT_LABELS,
+            name="Limite de vitesse de téléchargement",
+        )
+        self.choice_ratelimit.SetSelection(0)
+
         # Sites avec cookies
         lbl_cookie_sites = wx.StaticText(
             page,
@@ -230,6 +251,8 @@ class SettingsDialog(wx.Dialog):
         sizer.Add(self.txt_proxy_socks, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 6)
         sizer.Add(lbl_ua,              0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 12)
         sizer.Add(self.txt_useragent,   0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 6)
+        sizer.Add(lbl_ratelimit,        0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 12)
+        sizer.Add(self.choice_ratelimit, 0, wx.LEFT | wx.RIGHT | wx.TOP, 6)
         sizer.Add(lbl_cookie_sites,     0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 12)
         sizer.Add(self.lst_cookie_sites, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 6)
         sizer.Add(lbl_cookies_hint,     0, wx.LEFT | wx.RIGHT | wx.TOP, 4)
@@ -307,6 +330,9 @@ class SettingsDialog(wx.Dialog):
         self.txt_proxy_http.SetValue(s.get("proxy_http", ""))
         self.txt_proxy_socks.SetValue(s.get("proxy_socks", ""))
         self.txt_useragent.SetValue(s.get("user_agent", ""))
+        rl = s.get("ratelimit_bytes", 0)
+        rl_idx = RATELIMIT_VALUES.index(rl) if rl in RATELIMIT_VALUES else 0
+        self.choice_ratelimit.SetSelection(rl_idx)
 
         # Cookies
         # Sites avec cookies
@@ -343,6 +369,7 @@ class SettingsDialog(wx.Dialog):
         s["proxy_http"]  = self.txt_proxy_http.GetValue().strip()
         s["proxy_socks"] = self.txt_proxy_socks.GetValue().strip()
         s["user_agent"]  = self.txt_useragent.GetValue().strip()
+        s["ratelimit_bytes"] = RATELIMIT_VALUES[self.choice_ratelimit.GetSelection()]
 
         # Sites avec cookies
         s["cookie_sites"] = [self.lst_cookie_sites.GetString(i)

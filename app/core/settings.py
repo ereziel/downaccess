@@ -12,6 +12,7 @@ DEFAULTS: dict = {
     "proxy_http": "",
     "proxy_socks": "",
     "user_agent": "",
+    "ratelimit_bytes": 0,           # 0 = illimité, sinon octets/seconde
     "auto_subtitles": False,
     "subtitle_langs": ["fr", "en"],
     "subtitle_format": "srt",       # srt | vtt | original

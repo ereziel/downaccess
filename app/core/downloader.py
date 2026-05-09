@@ -253,6 +253,10 @@ class Downloader:
         if self._settings.get("proxy_http"):
             opts["proxy"] = self._settings["proxy_http"]
 
+        ratelimit = self._settings.get("ratelimit_bytes", 0)
+        if ratelimit and ratelimit > 0:
+            opts["ratelimit"] = ratelimit
+
         # Headers supplémentaires (provenant de l'UGE)
         headers = {}
         if self._settings.get("user_agent"):
