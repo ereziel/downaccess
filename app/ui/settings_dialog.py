@@ -147,11 +147,11 @@ class SettingsDialog(wx.Dialog):
 
         self.choice_post = wx.RadioBox(
             page,
-            label="Post-traitement par défaut",
+            label="Format par défaut",
             choices=POST_LABELS,
             majorDimension=1,
             style=wx.RA_SPECIFY_COLS,
-            name="Post-traitement par défaut",
+            name="Format par défaut",
         )
 
         sizer.Add(self.choice_post, 0, wx.EXPAND | wx.ALL, 12)
