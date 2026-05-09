@@ -734,8 +734,6 @@ class MainWindow(wx.Frame):
                 vid_id = entry.get("id", "") or url
                 if "youtube" in ie_key or not ie_key:
                     url = f"https://www.youtube.com/watch?v={vid_id}"
-                elif "bilibili" in ie_key or "bili" in ie_key:
-                    url = f"https://www.bilibili.com/video/{vid_id}"
                 else:
                     url = ""
             if url:

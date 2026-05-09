@@ -9,7 +9,7 @@ Téléchargeur vidéo et audio Windows, **100 % accessible NVDA**.
 
 - **Téléchargement** de vidéos et audios depuis des centaines de sites (YouTube, SoundCloud, Dailymotion, Twitch, etc.) via [yt-dlp](https://github.com/yt-dlp/yt-dlp)
 - **Extraction guidée (UGE)** — navigateur intégré (WebView2) pour détecter automatiquement les médias sur n'importe quelle page
-- **Recherche intégrée** — YouTube, SoundCloud, Bilibili sans quitter l'app
+- **Recherche intégrée** — YouTube, SoundCloud sans quitter l'app
 - **Sélection de format** — Auto, MP4, MP3, M4A, ou choix manuel parmi tous les formats disponibles
 - **Playlists** — détection automatique, sélection individuelle des épisodes
 - **Sous-titres** — téléchargement automatique dans la langue de votre choix
