@@ -232,6 +232,18 @@ class SearchResultsDialog(wx.Dialog):
             speech.speak("Sélectionnez un résultat.")
             return
         entry = self._results[idx]
+        entry_type = entry.get("_dl_type") or "Vidéo"
+        if entry_type in ("Chaîne", "Playlist"):
+            label = "une chaîne" if entry_type == "Chaîne" else "une playlist"
+            wx.MessageBox(
+                f"L'aperçu n'est pas disponible pour {label}.\n\n"
+                "Cochez l'élément et utilisez « Télécharger la sélection » "
+                "pour récupérer son contenu.",
+                "Aperçu indisponible",
+                wx.OK | wx.ICON_INFORMATION,
+                self,
+            )
+            return
         title = entry.get("title") or entry.get("id") or "?"
         url = self._entry_url(entry)
         if not url:
