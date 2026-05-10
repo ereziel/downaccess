@@ -11,6 +11,22 @@ _log = logging.getLogger("downaccess.ui")
 
 _URL_RE = re.compile(r'https?://[^\s"\'<>]+', re.IGNORECASE)
 
+
+_SEARCH_TYPE_ORDER = {"Vidéo": 0, "Piste": 0, "Playlist": 1, "Chaîne": 2}
+
+
+def _classify_search_entry(entry: dict, site_prefix: str) -> str:
+    """Détermine le type d'un résultat de recherche (Vidéo / Playlist / Chaîne / Piste)."""
+    if site_prefix == "scsearch":
+        return "Piste"
+    ie_key = entry.get("ie_key") or ""
+    url = entry.get("url") or ""
+    if ie_key == "YoutubeTab":
+        if "list=" in url or "/playlist" in url:
+            return "Playlist"
+        return "Chaîne"
+    return "Vidéo"
+
 from app.core import settings as cfg
 from app.core import speech
 from app.core import updater
@@ -805,8 +821,11 @@ class MainWindow(wx.Frame):
                 }
                 with yt_dlp.YoutubeDL(opts) as ydl:
                     info = ydl.extract_info(search_url, download=False)
-                entries = list(info.get("entries") or []) if info else []
-                result["entries"] = [e for e in entries if e]
+                entries = [e for e in (info.get("entries") or []) if e] if info else []
+                for e in entries:
+                    e["_dl_type"] = _classify_search_entry(e, site_prefix)
+                entries.sort(key=lambda e: _SEARCH_TYPE_ORDER.get(e.get("_dl_type", ""), 3))
+                result["entries"] = entries
             except Exception as exc:
                 result["error"] = str(exc)
             wx.CallAfter(self._on_search_done, site_label, result)

@@ -121,9 +121,10 @@ class SearchResultsDialog(wx.Dialog):
         )
         self.lst.EnableCheckBoxes()
         self.lst.InsertColumn(0, "Sélection", width=100)
-        self.lst.InsertColumn(1, "Titre",     width=380)
+        self.lst.InsertColumn(1, "Titre",     width=360)
         self.lst.InsertColumn(2, "Durée",     width=80)
-        self.lst.InsertColumn(3, "Auteur",    width=200)
+        self.lst.InsertColumn(3, "Auteur",    width=180)
+        self.lst.InsertColumn(4, "Type",      width=80)
         sizer.Add(self.lst, 1, wx.EXPAND | wx.ALL, 8)
 
         # Compteur de sélection
@@ -176,11 +177,13 @@ class SearchResultsDialog(wx.Dialog):
             title    = entry.get("title") or entry.get("id") or "?"
             duration = _fmt_duration(entry.get("duration"))
             uploader = entry.get("uploader") or entry.get("channel") or "—"
+            entry_type = entry.get("_dl_type") or "Vidéo"
             idx = self.lst.GetItemCount()
             self.lst.InsertItem(idx, "Non coché")
             self.lst.SetItem(idx, 1, title)
             self.lst.SetItem(idx, 2, duration)
             self.lst.SetItem(idx, 3, uploader)
+            self.lst.SetItem(idx, 4, entry_type)
 
     def _on_check(self, event) -> None:
         idx = event.GetIndex() if event else -1
