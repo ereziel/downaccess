@@ -52,6 +52,7 @@ class DownloadProgress:
     speed: str = ""
     size: str = ""
     status: str = "downloading"  # downloading | finished | error
+    filepath: str = ""           # chemin du fichier final (status=finished)
 
 
 # Types de callbacks
@@ -404,6 +405,7 @@ class Downloader:
                     download_id=download_id,
                     percent=100.0,
                     status="finished",
+                    filepath=d.get("filename", "") or "",
                 ))
         return hook
 

@@ -1,9 +1,13 @@
+import logging
+import os
 import re
 import subprocess
 import time
 from urllib.parse import urlparse
 
 import wx
+
+_log = logging.getLogger("downaccess.ui")
 
 _URL_RE = re.compile(r'https?://[^\s"\'<>]+', re.IGNORECASE)
 
@@ -24,6 +28,9 @@ from app.ui.uge_dialog import UGEDialog
 from app.ui.login_dialog import LoginDialog
 from app.ui.update_dialog import UpdateDialog
 from app.ui.contact_dialog import ContactDialog
+from app.ui.history_dialog import HistoryDialog
+from app.core import history as history_log
+from app.core.history import HistoryEntry
 from app.ui.error_dialog import ErrorDialog
 from app.ui.warning_dialog import WarningDialog
 from app.ui.report_dialog import ReportDialog
@@ -59,6 +66,7 @@ ID_UPDATE_APP   = wx.NewIdRef()
 ID_CONTACT      = wx.NewIdRef()
 ID_GITHUB       = wx.NewIdRef()
 ID_IMPORT_LIST  = wx.NewIdRef()
+ID_HISTORY      = wx.NewIdRef()
 
 
 class _AppDownloadDialog(wx.Frame):
@@ -197,6 +205,11 @@ class MainWindow(wx.Frame):
         # a sélectionné un autre item dans la liste
         if self._gauge_dl_id is None or self._gauge_dl_id == prog.download_id:
             self._update_gauge(prog.download_id, prog.percent)
+        # Capture du chemin final pour l'historique
+        if prog.status == "finished" and prog.filepath:
+            data = self._dl_data.get(prog.download_id)
+            if data is not None:
+                data["filepath"] = prog.filepath
 
     def _on_dl_complete(self, download_id: str) -> None:
         self.download_list.complete_item(download_id)
@@ -205,8 +218,9 @@ class MainWindow(wx.Frame):
             self._reset_gauge()
         self.set_status("Téléchargement terminé.")
         speech.speak("Téléchargement terminé.")
-        # Si c'était un retry avec cookies, proposer de mémoriser le site
         dl_data = self._dl_data.get(download_id, {})
+        self._log_history(dl_data, status="success")
+        # Si c'était un retry avec cookies, proposer de mémoriser le site
         if dl_data.get("use_cookies"):
             self._propose_remember_cookie_site(dl_data.get("url", ""))
         # Ouvrir le dossier si tous les téléchargements sont terminés
@@ -219,6 +233,8 @@ class MainWindow(wx.Frame):
         if self._gauge_dl_id == download_id:
             self._reset_gauge()
         self.set_status("Erreur lors du téléchargement.")
+        dl_data = self._dl_data.get(download_id, {})
+        self._log_history(dl_data, status="failed", error=message)
         dlg = ErrorDialog(self, message)
         dlg.ShowModal()
         if dlg.wants_retry_cookies():
@@ -226,6 +242,46 @@ class MainWindow(wx.Frame):
         elif dlg.wants_report():
             self._start_error_report(download_id, message)
         dlg.Destroy()
+
+    def _log_history(self, dl_data: dict, status: str, error: str = "") -> None:
+        """Enregistre une entrée d'historique pour ce téléchargement."""
+        if not dl_data or not dl_data.get("url"):
+            return
+        try:
+            filepath = dl_data.get("filepath", "")
+            file_size = 0
+            if filepath:
+                try:
+                    file_size = os.path.getsize(filepath)
+                except OSError:
+                    file_size = 0
+            history_log.add(HistoryEntry(
+                url=dl_data.get("url", ""),
+                title=dl_data.get("title", ""),
+                site=dl_data.get("site", ""),
+                format_spec=dl_data.get("format_spec", "auto"),
+                format_id=dl_data.get("format_id"),
+                filepath=filepath,
+                file_size=file_size,
+                status=status,
+                error=error,
+            ))
+        except Exception:
+            _log.exception("Impossible d'enregistrer l'entrée d'historique")
+
+    def _on_show_history(self, _event) -> None:
+        dlg = HistoryDialog(self, on_redownload=self._on_history_redownload)
+        dlg.ShowModal()
+        dlg.Destroy()
+        wx.CallAfter(self.download_list.SetFocus)
+
+    def _on_history_redownload(self, entry: HistoryEntry) -> None:
+        """Callback : ré-ajoute une entrée de l'historique à la queue."""
+        self._enqueue_url(
+            entry.url,
+            format_spec=entry.format_spec or "auto",
+            format_id=entry.format_id,
+        )
 
     def _retry_with_cookies(self, download_id: str) -> None:
         """Relance le téléchargement avec les cookies du navigateur."""
@@ -582,6 +638,11 @@ class MainWindow(wx.Frame):
             ID_CLIP_TOGGLE, "Surveiller le &presse-papiers\tCtrl+Shift+V",
             "Détecter automatiquement les URLs copiées",
         )
+        dl_menu.AppendSeparator()
+        self.mi_history = dl_menu.Append(
+            ID_HISTORY, "&Historique...\tCtrl+H",
+            "Afficher l'historique des téléchargements",
+        )
         mb.Append(dl_menu, "&Téléchargements")
 
         # ---- Aide ----
@@ -698,6 +759,7 @@ class MainWindow(wx.Frame):
         self.Bind(wx.EVT_MENU, self._on_contact,        id=ID_CONTACT)
         self.Bind(wx.EVT_MENU, self._on_github,         id=ID_GITHUB)
         self.Bind(wx.EVT_MENU, self._on_import_urls,    id=ID_IMPORT_LIST)
+        self.Bind(wx.EVT_MENU, self._on_show_history,   id=ID_HISTORY)
         self.Bind(wx.EVT_MENU, self._on_about,          id=wx.ID_ABOUT)
         self.Bind(wx.EVT_CLOSE, self._on_close)
         self.download_list.Bind(wx.EVT_LIST_ITEM_SELECTED, self._on_list_select)
@@ -1237,6 +1299,7 @@ class MainWindow(wx.Frame):
             "Ctrl+G           Extraction guidée (navigateur intégré)\n"
             "Ctrl+V           Coller URL depuis le presse-papiers\n"
             "Ctrl+Shift+V     Activer/désactiver la surveillance du presse-papiers\n"
+            "Ctrl+H           Afficher l'historique\n"
             "F5               Démarrer la file\n"
             "Espace           Pause / Reprendre\n"
             "Suppr            Supprimer de la liste\n"
