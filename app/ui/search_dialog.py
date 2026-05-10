@@ -14,6 +14,18 @@ _SITES = [
 ]
 
 
+def _dl_type_label(code: str) -> str:
+    """Convertit le code interne ('video' / 'track' / 'playlist' / 'channel')
+    vers son libelle localise pour l'affichage dans la liste de resultats."""
+    if code == "track":
+        return _("Piste")
+    if code == "playlist":
+        return _("Playlist")
+    if code == "channel":
+        return _("Chaîne")
+    return _("Vidéo")
+
+
 class SearchDialog(wx.Dialog):
     """Saisie de la requête de recherche."""
 
@@ -179,13 +191,13 @@ class SearchResultsDialog(wx.Dialog):
             title    = entry.get("title") or entry.get("id") or "?"
             duration = _fmt_duration(entry.get("duration"))
             uploader = entry.get("uploader") or entry.get("channel") or "—"
-            entry_type = entry.get("_dl_type") or "Vidéo"
+            entry_type = entry.get("_dl_type") or "video"
             idx = self.lst.GetItemCount()
             self.lst.InsertItem(idx, "Non coché")
             self.lst.SetItem(idx, 1, title)
             self.lst.SetItem(idx, 2, duration)
             self.lst.SetItem(idx, 3, uploader)
-            self.lst.SetItem(idx, 4, entry_type)
+            self.lst.SetItem(idx, 4, _dl_type_label(entry_type))
 
     def _on_check(self, event) -> None:
         idx = event.GetIndex() if event else -1
@@ -234,9 +246,9 @@ class SearchResultsDialog(wx.Dialog):
             speech.speak("Sélectionnez un résultat.")
             return
         entry = self._results[idx]
-        entry_type = entry.get("_dl_type") or "Vidéo"
-        if entry_type in ("Chaîne", "Playlist"):
-            label = "une chaîne" if entry_type == "Chaîne" else "une playlist"
+        entry_type = entry.get("_dl_type") or "video"
+        if entry_type in ("channel", "playlist"):
+            label = "une chaîne" if entry_type == "channel" else "une playlist"
             wx.MessageBox(
                 f"L'aperçu n'est pas disponible pour {label}.\n\n"
                 "Cochez l'élément et utilisez « Télécharger la sélection » "
@@ -286,13 +298,13 @@ class SearchResultsDialog(wx.Dialog):
             return
 
         bulk_types = {e.get("_dl_type") for e in selected
-                      if e.get("_dl_type") in ("Chaîne", "Playlist")}
+                      if e.get("_dl_type") in ("channel", "playlist")}
         if bulk_types:
             from app.ui.confirm_dialog import confirm_with_memory
             labels = []
-            if "Chaîne" in bulk_types:
+            if "channel" in bulk_types:
                 labels.append("une chaîne (potentiellement des centaines de vidéos)")
-            if "Playlist" in bulk_types:
+            if "playlist" in bulk_types:
                 labels.append("une playlist complète")
             joined = " et ".join(labels)
             if not confirm_with_memory(

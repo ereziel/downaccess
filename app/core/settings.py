@@ -26,6 +26,7 @@ DEFAULTS: dict = {
     "cookie_sites": [],
     "intercept_use_page_title": True,
     "suppressed_warnings": [],     # clés des avertissements masqués
+    "language": "auto",            # auto | fr | en
 }
 
 

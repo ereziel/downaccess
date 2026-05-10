@@ -4,34 +4,72 @@ import wx
 
 from app.core import settings as cfg
 from app.core import speech
+from app.core import i18n
 from app.core.ffmpeg_utils import get_ffmpeg_path
 
-# Valeurs des choix de post-traitement (index → clé settings)
+# Cles internes (jamais traduites)
 POST_CHOICES = ["none", "mp4", "mp3", "m4a"]
-POST_LABELS  = ["Aucun (fichier brut)", "Vidéo MP4 (H.264)", "Audio MP3", "Audio M4A"]
-
 SUBTITLE_FORMAT_CHOICES = ["srt", "vtt", "original"]
-SUBTITLE_FORMAT_LABELS  = ["SRT", "VTT", "Original (sans conversion)"]
-
 SUBTITLE_MODE_CHOICES = ["separate", "embed", "burn"]
-SUBTITLE_MODE_LABELS  = [
-    "Fichier séparé (.srt à côté de la vidéo)",
-    "Inclus dans le conteneur (piste désactivable)",
-    "Incrustés dans l'image (ré-encode la vidéo, plus lent)",
+LANGUAGE_CHOICES = ["auto", "fr", "en"]
+
+# Limiteur de vitesse : valeurs en octets/sec. 0 = illimité.
+RATELIMIT_VALUES = [
+    0,
+    256 * 1024,
+    512 * 1024,
+    1 * 1024 * 1024,
+    2 * 1024 * 1024,
+    5 * 1024 * 1024,
+    10 * 1024 * 1024,
 ]
 
-# Limiteur de vitesse : (octets/sec, libellé). 0 = illimité.
-RATELIMIT_PRESETS = [
-    (0,                "Illimité"),
-    (256 * 1024,       "256 Ko/s"),
-    (512 * 1024,       "512 Ko/s"),
-    (1 * 1024 * 1024,  "1 Mo/s"),
-    (2 * 1024 * 1024,  "2 Mo/s"),
-    (5 * 1024 * 1024,  "5 Mo/s"),
-    (10 * 1024 * 1024, "10 Mo/s"),
-]
-RATELIMIT_VALUES = [v for v, _ in RATELIMIT_PRESETS]
-RATELIMIT_LABELS = [l for _, l in RATELIMIT_PRESETS]
+
+def _post_labels():
+    return [
+        _("Aucun (fichier brut)"),
+        _("Vidéo MP4 (H.264)"),
+        _("Audio MP3"),
+        _("Audio M4A"),
+    ]
+
+
+def _subtitle_format_labels():
+    return [
+        _("SRT"),
+        _("VTT"),
+        _("Original (sans conversion)"),
+    ]
+
+
+def _subtitle_mode_labels():
+    return [
+        _("Fichier séparé (.srt à côté de la vidéo)"),
+        _("Inclus dans le conteneur (piste désactivable)"),
+        _("Incrustés dans l'image (ré-encode la vidéo, plus lent)"),
+    ]
+
+
+def _ratelimit_labels():
+    return [
+        _("Illimité"),
+        _("256 Ko/s"),
+        _("512 Ko/s"),
+        _("1 Mo/s"),
+        _("2 Mo/s"),
+        _("5 Mo/s"),
+        _("10 Mo/s"),
+    ]
+
+
+def _language_labels():
+    detected = i18n.get_system_language_code()
+    detected_msgid = i18n.get_language_name_msgid(detected) or detected
+    return [
+        _("Auto ({language})").format(language=_(detected_msgid)),
+        _("Français"),
+        _("English"),
+    ]
 
 
 class SettingsDialog(wx.Dialog):
@@ -44,10 +82,14 @@ class SettingsDialog(wx.Dialog):
     def __init__(self, parent, settings: dict):
         super().__init__(
             parent,
-            title="Préférences — DownAccess",
+            title=_("Préférences — DownAccess"),
             style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER,
         )
         self._settings = dict(settings)  # copie de travail
+        self._initial_language = i18n.normalize_ui_language(
+            self._settings.get("language", "auto")
+        )
+        self._restart_requested = False
         self._build_ui()
         self._load_values()
         self._bind_events()
@@ -63,7 +105,7 @@ class SettingsDialog(wx.Dialog):
         main_sizer = wx.BoxSizer(wx.VERTICAL)
 
         self.notebook = wx.Notebook(self)
-        self.notebook.SetName("Onglets de préférences")
+        self.notebook.SetName(_("Onglets de préférences"))
 
         self._page_general   = self._build_page_general()
         self._page_formats   = self._build_page_formats()
@@ -71,18 +113,18 @@ class SettingsDialog(wx.Dialog):
         self._page_network   = self._build_page_network()
         self._page_advanced  = self._build_page_advanced()
 
-        self.notebook.AddPage(self._page_general,   "Général")
-        self.notebook.AddPage(self._page_formats,   "Formats")
-        self.notebook.AddPage(self._page_subtitles, "Sous-titres")
-        self.notebook.AddPage(self._page_network,   "Réseau")
-        self.notebook.AddPage(self._page_advanced,  "Avancé")
+        self.notebook.AddPage(self._page_general,   _("Général"))
+        self.notebook.AddPage(self._page_formats,   _("Formats"))
+        self.notebook.AddPage(self._page_subtitles, _("Sous-titres"))
+        self.notebook.AddPage(self._page_network,   _("Réseau"))
+        self.notebook.AddPage(self._page_advanced,  _("Avancé"))
 
         main_sizer.Add(self.notebook, 1, wx.EXPAND | wx.ALL, 8)
 
         # Boutons OK / Annuler
         btn_sizer = wx.StdDialogButtonSizer()
-        self.btn_ok     = wx.Button(self, wx.ID_OK,     label="Enregistrer")
-        self.btn_cancel = wx.Button(self, wx.ID_CANCEL, label="Annuler")
+        self.btn_ok     = wx.Button(self, wx.ID_OK,     label=_("Enregistrer"))
+        self.btn_cancel = wx.Button(self, wx.ID_CANCEL, label=_("Annuler"))
         self.btn_ok.SetDefault()
         btn_sizer.AddButton(self.btn_ok)
         btn_sizer.AddButton(self.btn_cancel)
@@ -100,54 +142,72 @@ class SettingsDialog(wx.Dialog):
         page = wx.Panel(self.notebook)
         sizer = wx.BoxSizer(wx.VERTICAL)
 
+        # Langue de l'interface
+        lbl_language = wx.StaticText(page, label=_("Langue de l'interface :"))
+        self.choice_language = wx.Choice(
+            page,
+            choices=_language_labels(),
+            name=_("Langue de l'interface"),
+        )
+        self.choice_language.SetSelection(0)
+        lbl_language_hint = wx.StaticText(
+            page,
+            label=_("Le changement de langue prendra effet au prochain démarrage."),
+        )
+        lbl_language_hint.SetForegroundColour(
+            wx.SystemSettings.GetColour(wx.SYS_COLOUR_GRAYTEXT)
+        )
+
         # Dossier de destination
-        lbl_folder = wx.StaticText(page, label="Dossier de destination :")
+        lbl_folder = wx.StaticText(page, label=_("Dossier de destination :"))
         row_folder = wx.BoxSizer(wx.HORIZONTAL)
-        self.txt_folder = wx.TextCtrl(page, name="Dossier de destination")
-        self.btn_browse  = wx.Button(page, label="Parcourir…")
+        self.txt_folder = wx.TextCtrl(page, name=_("Dossier de destination"))
+        self.btn_browse  = wx.Button(page, label=_("Parcourir…"))
         row_folder.Add(self.txt_folder, 1, wx.EXPAND | wx.RIGHT, 6)
         row_folder.Add(self.btn_browse, 0)
 
         # Téléchargements simultanés
-        lbl_concurrent = wx.StaticText(page, label="Téléchargements simultanés :")
+        lbl_concurrent = wx.StaticText(page, label=_("Téléchargements simultanés :"))
         self.spin_concurrent = wx.SpinCtrl(page, min=1, max=10, initial=2,
-                                           name="Téléchargements simultanés")
+                                           name=_("Téléchargements simultanés"))
 
         # Fragments en parallèle
-        lbl_fragments = wx.StaticText(page, label="Fragments en parallèle par téléchargement :")
+        lbl_fragments = wx.StaticText(page, label=_("Fragments en parallèle par téléchargement :"))
         self.spin_fragments = wx.SpinCtrl(page, min=1, max=16, initial=1,
-                                          name="Fragments en parallèle")
+                                          name=_("Fragments en parallèle"))
         lbl_fragments_hint = wx.StaticText(
             page,
-            label="Accélère le téléchargement en utilisant plusieurs connexions. "
-                  "1 = désactivé.",
+            label=_("Accélère le téléchargement en utilisant plusieurs connexions. 1 = désactivé."),
         )
         lbl_fragments_hint.SetForegroundColour(wx.SystemSettings.GetColour(wx.SYS_COLOUR_GRAYTEXT))
 
         # Action après téléchargement
-        lbl_after = wx.StaticText(page, label="Action après téléchargement :")
+        lbl_after = wx.StaticText(page, label=_("Action après téléchargement :"))
         self.chk_open_folder = wx.CheckBox(page,
-            label="Ouvrir le dossier de destination quand tout est terminé",
-            name="Ouvrir le dossier de destination quand tout est terminé")
+            label=_("Ouvrir le dossier de destination quand tout est terminé"),
+            name=_("Ouvrir le dossier de destination quand tout est terminé"))
         self.chk_organize = wx.CheckBox(page,
-            label="Organiser dans des sous-dossiers par site",
-            name="Organiser dans des sous-dossiers par site")
+            label=_("Organiser dans des sous-dossiers par site"),
+            name=_("Organiser dans des sous-dossiers par site"))
         self.chk_organize_playlist = wx.CheckBox(page,
-            label="Organiser dans des sous-dossiers par playlist",
-            name="Organiser dans des sous-dossiers par playlist")
+            label=_("Organiser dans des sous-dossiers par playlist"),
+            name=_("Organiser dans des sous-dossiers par playlist"))
 
         # Extraction guidée
-        lbl_uge = wx.StaticText(page, label="Extraction guidée :")
+        lbl_uge = wx.StaticText(page, label=_("Extraction guidée :"))
         self.chk_intercept_title = wx.CheckBox(page,
-            label="Utiliser le titre de la page comme nom de fichier (interception)",
-            name="Utiliser le titre de la page comme nom de fichier")
+            label=_("Utiliser le titre de la page comme nom de fichier (interception)"),
+            name=_("Utiliser le titre de la page comme nom de fichier"))
 
         # Avertissements
-        lbl_warn = wx.StaticText(page, label="Avertissements :")
+        lbl_warn = wx.StaticText(page, label=_("Avertissements :"))
         self.btn_reset_warnings = wx.Button(page,
-            label="Réinitialiser tous les avertissements",
-            name="Réinitialiser tous les avertissements")
+            label=_("Réinitialiser tous les avertissements"),
+            name=_("Réinitialiser tous les avertissements"))
 
+        sizer.Add(lbl_language,      0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 12)
+        sizer.Add(self.choice_language, 0, wx.LEFT | wx.RIGHT | wx.TOP, 6)
+        sizer.Add(lbl_language_hint, 0, wx.LEFT | wx.RIGHT | wx.TOP, 4)
         sizer.Add(lbl_folder,        0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 12)
         sizer.Add(row_folder,        0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 6)
         sizer.Add(lbl_concurrent,    0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 12)
@@ -175,11 +235,11 @@ class SettingsDialog(wx.Dialog):
 
         self.choice_post = wx.RadioBox(
             page,
-            label="Format par défaut",
-            choices=POST_LABELS,
+            label=_("Format par défaut"),
+            choices=_post_labels(),
             majorDimension=1,
             style=wx.RA_SPECIFY_COLS,
-            name="Format par défaut",
+            name=_("Format par défaut"),
         )
 
         sizer.Add(self.choice_post, 0, wx.EXPAND | wx.ALL, 12)
@@ -194,29 +254,29 @@ class SettingsDialog(wx.Dialog):
         sizer = wx.BoxSizer(wx.VERTICAL)
 
         self.chk_auto_subs = wx.CheckBox(page,
-            label="Télécharger automatiquement les sous-titres",
-            name="Télécharger automatiquement les sous-titres")
+            label=_("Télécharger automatiquement les sous-titres"),
+            name=_("Télécharger automatiquement les sous-titres"))
 
-        lbl_langs = wx.StaticText(page, label="Langues préférées (codes séparés par des virgules) :")
-        self.txt_langs = wx.TextCtrl(page, name="Langues des sous-titres")
+        lbl_langs = wx.StaticText(page, label=_("Langues préférées (codes séparés par des virgules) :"))
+        self.txt_langs = wx.TextCtrl(page, name=_("Langues des sous-titres"))
         self.txt_langs.SetHint("fr, en")
 
         self.choice_subfmt = wx.RadioBox(
             page,
-            label="Format des sous-titres",
-            choices=SUBTITLE_FORMAT_LABELS,
+            label=_("Format des sous-titres"),
+            choices=_subtitle_format_labels(),
             majorDimension=1,
             style=wx.RA_SPECIFY_COLS,
-            name="Format des sous-titres",
+            name=_("Format des sous-titres"),
         )
 
         self.choice_submode = wx.RadioBox(
             page,
-            label="Mode des sous-titres",
-            choices=SUBTITLE_MODE_LABELS,
+            label=_("Mode des sous-titres"),
+            choices=_subtitle_mode_labels(),
             majorDimension=1,
             style=wx.RA_SPECIFY_COLS,
-            name="Mode des sous-titres",
+            name=_("Mode des sous-titres"),
         )
 
         sizer.Add(self.chk_auto_subs, 0, wx.LEFT | wx.RIGHT | wx.TOP, 12)
@@ -234,40 +294,39 @@ class SettingsDialog(wx.Dialog):
         page = wx.Panel(self.notebook)
         sizer = wx.BoxSizer(wx.VERTICAL)
 
-        lbl_proxy_http = wx.StaticText(page, label="Proxy HTTP/HTTPS :")
-        self.txt_proxy_http = wx.TextCtrl(page, name="Proxy HTTP")
+        lbl_proxy_http = wx.StaticText(page, label=_("Proxy HTTP/HTTPS :"))
+        self.txt_proxy_http = wx.TextCtrl(page, name=_("Proxy HTTP"))
         self.txt_proxy_http.SetHint("http://proxy:8080")
 
-        lbl_proxy_socks = wx.StaticText(page, label="Proxy SOCKS4/5 :")
-        self.txt_proxy_socks = wx.TextCtrl(page, name="Proxy SOCKS")
+        lbl_proxy_socks = wx.StaticText(page, label=_("Proxy SOCKS4/5 :"))
+        self.txt_proxy_socks = wx.TextCtrl(page, name=_("Proxy SOCKS"))
         self.txt_proxy_socks.SetHint("socks5://127.0.0.1:1080")
 
-        lbl_ua = wx.StaticText(page, label="User-Agent personnalisé (laisser vide = défaut) :")
-        self.txt_useragent = wx.TextCtrl(page, name="User-Agent")
+        lbl_ua = wx.StaticText(page, label=_("User-Agent personnalisé (laisser vide = défaut) :"))
+        self.txt_useragent = wx.TextCtrl(page, name=_("User-Agent"))
 
-        lbl_ratelimit = wx.StaticText(page, label="Limite de vitesse de téléchargement :")
+        lbl_ratelimit = wx.StaticText(page, label=_("Limite de vitesse de téléchargement :"))
         self.choice_ratelimit = wx.Choice(
             page,
-            choices=RATELIMIT_LABELS,
-            name="Limite de vitesse de téléchargement",
+            choices=_ratelimit_labels(),
+            name=_("Limite de vitesse de téléchargement"),
         )
         self.choice_ratelimit.SetSelection(0)
 
         # Sites avec cookies
         lbl_cookie_sites = wx.StaticText(
             page,
-            label="Sites utilisant les cookies du navigateur :",
+            label=_("Sites utilisant les cookies du navigateur :"),
         )
         self.lst_cookie_sites = wx.ListBox(page, size=(-1, 80),
-                                           name="Sites avec cookies")
+                                           name=_("Sites avec cookies"))
         lbl_cookies_hint = wx.StaticText(
             page,
-            label="Les sites sont ajoutés automatiquement quand vous utilisez "
-                  "\"Réessayer avec les cookies\" après une erreur.",
+            label=_("Les sites sont ajoutés automatiquement quand vous utilisez \"Réessayer avec les cookies\" après une erreur."),
         )
         lbl_cookies_hint.SetForegroundColour(wx.SystemSettings.GetColour(wx.SYS_COLOUR_GRAYTEXT))
-        self.btn_remove_cookie_site = wx.Button(page, label="Supprimer le site sélectionné",
-                                                name="Supprimer le site sélectionné")
+        self.btn_remove_cookie_site = wx.Button(page, label=_("Supprimer le site sélectionné"),
+                                                name=_("Supprimer le site sélectionné"))
         self.btn_remove_cookie_site.Bind(wx.EVT_BUTTON, self._on_remove_cookie_site)
 
         sizer.Add(lbl_proxy_http,      0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 12)
@@ -293,25 +352,25 @@ class SettingsDialog(wx.Dialog):
         sizer = wx.BoxSizer(wx.VERTICAL)
 
         # Chemin ffmpeg
-        lbl_ffmpeg = wx.StaticText(page, label="Chemin vers ffmpeg :")
+        lbl_ffmpeg = wx.StaticText(page, label=_("Chemin vers ffmpeg :"))
         row_ffmpeg = wx.BoxSizer(wx.HORIZONTAL)
-        self.txt_ffmpeg = wx.TextCtrl(page, name="Chemin ffmpeg")
+        self.txt_ffmpeg = wx.TextCtrl(page, name=_("Chemin ffmpeg"))
         self.txt_ffmpeg.SetHint("ffmpeg")
-        self.btn_ffmpeg_browse = wx.Button(page, label="Parcourir…",
-                                           name="Parcourir ffmpeg")
-        self.btn_ffmpeg_test   = wx.Button(page, label="Tester",
-                                           name="Tester ffmpeg")
+        self.btn_ffmpeg_browse = wx.Button(page, label=_("Parcourir…"),
+                                           name=_("Parcourir ffmpeg"))
+        self.btn_ffmpeg_test   = wx.Button(page, label=_("Tester"),
+                                           name=_("Tester ffmpeg"))
         row_ffmpeg.Add(self.txt_ffmpeg,       1, wx.EXPAND | wx.RIGHT, 6)
         row_ffmpeg.Add(self.btn_ffmpeg_browse, 0, wx.RIGHT, 4)
         row_ffmpeg.Add(self.btn_ffmpeg_test,   0)
 
         # Options yt-dlp supplémentaires
         lbl_ytdlp_opts = wx.StaticText(page,
-            label="Options yt-dlp supplémentaires (raw, une par ligne) :")
+            label=_("Options yt-dlp supplémentaires (raw, une par ligne) :"))
         self.txt_ytdlp_opts = wx.TextCtrl(page,
             style=wx.TE_MULTILINE,
             size=(-1, 80),
-            name="Options yt-dlp supplémentaires",
+            name=_("Options yt-dlp supplémentaires"),
         )
         self.txt_ytdlp_opts.SetHint("--no-playlist\n--restrict-filenames")
 
@@ -329,6 +388,11 @@ class SettingsDialog(wx.Dialog):
 
     def _load_values(self) -> None:
         s = self._settings
+
+        # Langue
+        lang = i18n.normalize_ui_language(s.get("language", "auto"))
+        lang_idx = LANGUAGE_CHOICES.index(lang) if lang in LANGUAGE_CHOICES else 0
+        self.choice_language.SetSelection(lang_idx)
 
         # Général
         self.txt_folder.SetValue(s.get("download_folder", ""))
@@ -375,6 +439,9 @@ class SettingsDialog(wx.Dialog):
     def _collect_values(self) -> dict:
         s = dict(self._settings)
 
+        # Langue
+        s["language"] = LANGUAGE_CHOICES[self.choice_language.GetSelection()]
+
         # Général
         s["download_folder"]          = self.txt_folder.GetValue().strip()
         s["max_concurrent_downloads"] = self.spin_concurrent.GetValue()
@@ -390,7 +457,7 @@ class SettingsDialog(wx.Dialog):
         # Sous-titres
         s["auto_subtitles"]  = self.chk_auto_subs.GetValue()
         langs_raw = self.txt_langs.GetValue()
-        s["subtitle_langs"]  = [l.strip() for l in langs_raw.split(",") if l.strip()]
+        s["subtitle_langs"]  = [lg.strip() for lg in langs_raw.split(",") if lg.strip()]
         s["subtitle_format"] = SUBTITLE_FORMAT_CHOICES[self.choice_subfmt.GetSelection()]
         s["subtitle_mode"]   = SUBTITLE_MODE_CHOICES[self.choice_submode.GetSelection()]
 
@@ -407,7 +474,7 @@ class SettingsDialog(wx.Dialog):
         # Avancé
         s["ffmpeg_path"] = self.txt_ffmpeg.GetValue().strip() or "ffmpeg"
         opts_raw = self.txt_ytdlp_opts.GetValue()
-        s["ytdlp_extra_opts"] = [l.strip() for l in opts_raw.splitlines() if l.strip()]
+        s["ytdlp_extra_opts"] = [opt.strip() for opt in opts_raw.splitlines() if opt.strip()]
 
         return s
 
@@ -426,16 +493,20 @@ class SettingsDialog(wx.Dialog):
         n = len(self._settings.get("suppressed_warnings") or [])
         if n == 0:
             wx.MessageBox(
-                "Aucun avertissement n'est actuellement masqué.",
-                "Avertissements",
+                _("Aucun avertissement n'est actuellement masqué."),
+                _("Avertissements"),
                 wx.OK | wx.ICON_INFORMATION, self,
             )
             return
         self._settings["suppressed_warnings"] = []
         cfg.save(self._settings)
+        if n > 1:
+            msg = _("{n} avertissements ont été réactivés.").format(n=n)
+        else:
+            msg = _("{n} avertissement a été réactivé.").format(n=n)
         wx.MessageBox(
-            f"{n} avertissement{'s ont été réactivés' if n > 1 else ' a été réactivé'}.",
-            "Avertissements réinitialisés",
+            msg,
+            _("Avertissements réinitialisés"),
             wx.OK | wx.ICON_INFORMATION, self,
         )
 
@@ -443,8 +514,8 @@ class SettingsDialog(wx.Dialog):
         sel = self.lst_cookie_sites.GetSelection()
         if sel == wx.NOT_FOUND:
             wx.MessageBox(
-                "Sélectionnez un site à supprimer.",
-                "Aucune sélection", wx.OK | wx.ICON_INFORMATION, self,
+                _("Sélectionnez un site à supprimer."),
+                _("Aucune sélection"), wx.OK | wx.ICON_INFORMATION, self,
             )
             return
         self.lst_cookie_sites.Delete(sel)
@@ -453,20 +524,36 @@ class SettingsDialog(wx.Dialog):
         s = self._collect_values()
         if not s.get("download_folder"):
             wx.MessageBox(
-                "Le dossier de destination ne peut pas être vide.",
-                "Champ requis", wx.OK | wx.ICON_WARNING, self,
+                _("Le dossier de destination ne peut pas être vide."),
+                _("Champ requis"), wx.OK | wx.ICON_WARNING, self,
             )
             self.notebook.SetSelection(0)
             self.txt_folder.SetFocus()
             return
+        # Si la langue effective change, proposer un redemarrage immediat.
+        old_resolved = i18n.resolve_language(self._initial_language)
+        new_resolved = i18n.resolve_language(
+            i18n.normalize_ui_language(s.get("language", "auto"))
+        )
+        if old_resolved != new_resolved:
+            with wx.MessageDialog(
+                self,
+                _("La langue a été modifiée. Voulez-vous redémarrer DownAccess maintenant pour appliquer le changement ?"),
+                _("Redémarrer DownAccess ?"),
+                wx.YES_NO | wx.ICON_QUESTION,
+            ) as dlg:
+                self._restart_requested = (dlg.ShowModal() == wx.ID_YES)
         self._settings = s
         self.EndModal(wx.ID_OK)
+
+    def restart_requested(self) -> bool:
+        return self._restart_requested
 
     def _on_browse_folder(self, _event) -> None:
         current = self.txt_folder.GetValue()
         with wx.DirDialog(
             self,
-            "Choisir le dossier de destination",
+            _("Choisir le dossier de destination"),
             defaultPath=current,
             style=wx.DD_DEFAULT_STYLE | wx.DD_DIR_MUST_EXIST,
         ) as dlg:
@@ -476,8 +563,8 @@ class SettingsDialog(wx.Dialog):
     def _on_browse_ffmpeg(self, _event) -> None:
         with wx.FileDialog(
             self,
-            "Chemin vers ffmpeg",
-            wildcard="Exécutable (*.exe)|*.exe|Tous les fichiers|*",
+            _("Chemin vers ffmpeg"),
+            wildcard=_("Exécutable (*.exe)|*.exe|Tous les fichiers|*"),
             style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST,
         ) as dlg:
             if dlg.ShowModal() == wx.ID_OK:
@@ -492,26 +579,25 @@ class SettingsDialog(wx.Dialog):
             )
             if result.returncode == 0:
                 first_line = result.stdout.splitlines()[0] if result.stdout else "OK"
-                speech.speak("ffmpeg trouvé.")
+                speech.speak(_("ffmpeg trouvé."))
                 wx.MessageBox(
-                    f"ffmpeg trouvé :\n{first_line}",
-                    "Test ffmpeg réussi", wx.OK | wx.ICON_INFORMATION, self,
+                    _("ffmpeg trouvé :\n{first_line}").format(first_line=first_line),
+                    _("Test ffmpeg réussi"), wx.OK | wx.ICON_INFORMATION, self,
                 )
             else:
-                speech.speak("Test ffmpeg échoué.")
+                speech.speak(_("Test ffmpeg échoué."))
                 wx.MessageBox(
-                    f"ffmpeg a retourné une erreur :\n{result.stderr[:200]}",
-                    "Test ffmpeg échoué", wx.OK | wx.ICON_ERROR, self,
+                    _("ffmpeg a retourné une erreur :\n{stderr}").format(stderr=result.stderr[:200]),
+                    _("Test ffmpeg échoué"), wx.OK | wx.ICON_ERROR, self,
                 )
         except FileNotFoundError:
-            speech.speak("ffmpeg introuvable.")
+            speech.speak(_("ffmpeg introuvable."))
             wx.MessageBox(
-                f"ffmpeg introuvable à : {path}\n\n"
-                "Vérifiez le chemin ou installez ffmpeg.",
-                "ffmpeg non trouvé", wx.OK | wx.ICON_ERROR, self,
+                _("ffmpeg introuvable à : {path}\n\nVérifiez le chemin ou installez ffmpeg.").format(path=path),
+                _("ffmpeg non trouvé"), wx.OK | wx.ICON_ERROR, self,
             )
         except Exception as exc:
-            wx.MessageBox(str(exc), "Erreur", wx.OK | wx.ICON_ERROR, self)
+            wx.MessageBox(str(exc), _("Erreur"), wx.OK | wx.ICON_ERROR, self)
 
     # ------------------------------------------------------------------
     # API publique

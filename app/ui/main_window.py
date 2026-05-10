@@ -2,6 +2,7 @@ import logging
 import os
 import re
 import subprocess
+import sys
 import time
 from urllib.parse import urlparse
 
@@ -12,20 +13,21 @@ _log = logging.getLogger("downaccess.ui")
 _URL_RE = re.compile(r'https?://[^\s"\'<>]+', re.IGNORECASE)
 
 
-_SEARCH_TYPE_ORDER = {"Vidéo": 0, "Piste": 0, "Playlist": 1, "Chaîne": 2}
+# Cles internes (jamais traduites). search_dialog._TYPE_LABELS resout l'affichage.
+_SEARCH_TYPE_ORDER = {"video": 0, "track": 0, "playlist": 1, "channel": 2}
 
 
 def _classify_search_entry(entry: dict, site_prefix: str) -> str:
-    """Détermine le type d'un résultat de recherche (Vidéo / Playlist / Chaîne / Piste)."""
+    """Determine le type d'un resultat de recherche (cle interne)."""
     if site_prefix == "scsearch":
-        return "Piste"
+        return "track"
     ie_key = entry.get("ie_key") or ""
     url = entry.get("url") or ""
     if ie_key == "YoutubeTab":
         if "list=" in url or "/playlist" in url:
-            return "Playlist"
-        return "Chaîne"
-    return "Vidéo"
+            return "playlist"
+        return "channel"
+    return "video"
 
 from app.core import settings as cfg
 from app.core import speech
@@ -94,7 +96,7 @@ class _AppDownloadDialog(wx.Frame):
     def __init__(self, parent, version: str):
         super().__init__(
             parent,
-            title=f"Téléchargement de DownAccess {version}",
+            title=_("Téléchargement de DownAccess {version}").format(version=version),
             style=(
                 wx.DEFAULT_FRAME_STYLE
                 & ~(wx.RESIZE_BORDER | wx.MAXIMIZE_BOX | wx.MINIMIZE_BOX)
@@ -110,12 +112,12 @@ class _AppDownloadDialog(wx.Frame):
 
         self._lbl = wx.StaticText(
             panel,
-            label=f"Téléchargement de DownAccess {version}…",
+            label=_("Téléchargement de DownAccess {version}…").format(version=version),
         )
         self._gauge = wx.Gauge(
             panel, range=100,
             style=wx.GA_HORIZONTAL | wx.GA_SMOOTH,
-            name="Progression du téléchargement",
+            name=_("Progression du téléchargement"),
         )
         self._lbl_pct = wx.StaticText(panel, label="0 %")
 
@@ -139,8 +141,8 @@ class _AppDownloadDialog(wx.Frame):
         self._gauge.SetValue(pct)
         self._lbl_pct.SetLabel(f"{pct} %")
         if pct >= 100:
-            self._lbl.SetLabel("Installation en cours…")
-            speech.speak("Téléchargement terminé. Installation en cours.")
+            self._lbl.SetLabel(_("Installation en cours…"))
+            speech.speak(_("Téléchargement terminé. Installation en cours."))
 
 
 class _URLDropTarget(wx.TextDropTarget):
@@ -212,7 +214,7 @@ class MainWindow(wx.Frame):
             self._dl_data[info.download_id]["site"]  = info.site
             self._dl_data[info.download_id]["title"] = info.title
         title = info.title or info.url
-        speech.speak(f"Téléchargement démarré : {title}.", interrupt=False)
+        speech.speak(_("Téléchargement démarré : {title}.").format(title=title), interrupt=False)
 
     def _on_dl_progress(self, prog: DownloadProgress) -> None:
         self.download_list.update_progress(prog.download_id, prog.percent, prog.size)
@@ -232,8 +234,8 @@ class MainWindow(wx.Frame):
         self._progress.pop(download_id, None)
         if self._gauge_dl_id == download_id:
             self._reset_gauge()
-        self.set_status("Téléchargement terminé.")
-        speech.speak("Téléchargement terminé.")
+        self.set_status(_("Téléchargement terminé."))
+        speech.speak(_("Téléchargement terminé."))
         dl_data = self._dl_data.get(download_id, {})
         self._log_history(dl_data, status="success")
         # Si c'était un retry avec cookies, proposer de mémoriser le site
@@ -248,7 +250,7 @@ class MainWindow(wx.Frame):
         self._progress.pop(download_id, None)
         if self._gauge_dl_id == download_id:
             self._reset_gauge()
-        self.set_status("Erreur lors du téléchargement.")
+        self.set_status(_("Erreur lors du téléchargement."))
         dl_data = self._dl_data.get(download_id, {})
         self._log_history(dl_data, status="failed", error=message)
         dlg = ErrorDialog(self, message)
@@ -303,7 +305,7 @@ class MainWindow(wx.Frame):
         """Relance le téléchargement avec les cookies du navigateur."""
         data = self._dl_data.get(download_id)
         if not data:
-            self.set_status("Impossible de réessayer : données introuvables.")
+            self.set_status(_("Impossible de réessayer : données introuvables."))
             return
         # Supprimer l'item échoué et relancer avec cookies
         self.download_list.remove_item(download_id)
@@ -321,7 +323,7 @@ class MainWindow(wx.Frame):
         )
         label = data.get("format_spec", "auto").upper()
         if label == "AUTO":
-            label = "Auto"
+            label = _("Auto")
         self.download_list.add_item(dl_id, url, site="—", fmt=label)
         self._dl_data[dl_id] = {
             "url": url,
@@ -335,8 +337,8 @@ class MainWindow(wx.Frame):
             "use_cookies": True,
         }
         self.set_count(self.download_list.count())
-        self.set_status("Relance avec les cookies du navigateur...")
-        speech.speak("Relance avec les cookies du navigateur.")
+        self.set_status(_("Relance avec les cookies du navigateur..."))
+        speech.speak(_("Relance avec les cookies du navigateur."))
 
     def _propose_remember_cookie_site(self, url: str) -> None:
         """Après un retry cookies réussi, propose de mémoriser le site."""
@@ -354,10 +356,8 @@ class MainWindow(wx.Frame):
             return
         dlg = wx.MessageDialog(
             self,
-            f"Le téléchargement avec cookies a réussi pour {host}.\n\n"
-            f"Voulez-vous toujours utiliser les cookies du navigateur "
-            f"pour ce site ?",
-            "Mémoriser les cookies pour ce site",
+            _("Le téléchargement avec cookies a réussi pour {host}.\n\nVoulez-vous toujours utiliser les cookies du navigateur pour ce site ?").format(host=host),
+            _("Mémoriser les cookies pour ce site"),
             wx.YES_NO | wx.ICON_QUESTION,
         )
         if dlg.ShowModal() == wx.ID_YES:
@@ -365,12 +365,12 @@ class MainWindow(wx.Frame):
             self.settings["cookie_sites"] = sites
             from app.core import settings as cfg
             cfg.save(self.settings)
-            self.set_status(f"Cookies mémorisés pour {host}.")
+            self.set_status(_("Cookies mémorisés pour {host}.").format(host=host))
         dlg.Destroy()
 
     def _on_dl_warning(self, download_id: str, message: str) -> None:
-        self.set_status("Téléchargement terminé avec avertissement.")
-        speech.speak("Téléchargement terminé avec avertissement.")
+        self.set_status(_("Téléchargement terminé avec avertissement."))
+        speech.speak(_("Téléchargement terminé avec avertissement."))
         dlg = WarningDialog(self, message)
         dlg.ShowModal()
         if dlg.wants_report():
@@ -478,9 +478,9 @@ class MainWindow(wx.Frame):
             def _on_sent(success: bool, msg: str):
                 report_dlg.set_done(success, msg)
                 if success:
-                    self.set_status("Rapport d'erreur envoyé.")
+                    self.set_status(_("Rapport d'erreur envoyé."))
                 else:
-                    self.set_status("Échec de l'envoi du rapport.")
+                    self.set_status(_("Échec de l'envoi du rapport."))
 
             _th.Thread(target=_run_verbose, daemon=True).start()
 
@@ -498,7 +498,11 @@ class MainWindow(wx.Frame):
         self._dl_data.pop(info.download_id, None)
         self.set_count(self.download_list.count())
 
-        speech.speak(f"Playlist détectée : {info.title}. {len(info.playlist_entries)} vidéos.")
+        speech.speak(
+            _("Playlist détectée : {title}. {count} vidéos.").format(
+                title=info.title, count=len(info.playlist_entries)
+            )
+        )
 
         from app.ui.playlist_dialog import NUMBER_ORIGINAL, NUMBER_SEQUENTIAL
         from app.core import settings as cfg
@@ -507,7 +511,7 @@ class MainWindow(wx.Frame):
         with PlaylistDialog(self, info.title, info.playlist_entries,
                             default_numbering=default_num) as dlg:
             if dlg.ShowModal() != wx.ID_OK:
-                self.set_status("Téléchargement de playlist annulé.")
+                self.set_status(_("Téléchargement de playlist annulé."))
                 return
             selected = dlg.get_selected_entries()
             numbering = dlg.get_numbering_mode()
@@ -531,7 +535,7 @@ class MainWindow(wx.Frame):
             self._enqueue_url(url, fmt_choice, playlist_title=info.title,
                               playlist_number=num)
 
-        speech.speak(f"{len(selected)} vidéos ajoutées à la file.")
+        speech.speak(_("{count} vidéos ajoutées à la file.").format(count=len(selected)))
 
     def _update_gauge(self, dl_id: str, percent: float) -> None:
         self._gauge_dl_id = dl_id
@@ -581,125 +585,125 @@ class MainWindow(wx.Frame):
         # ---- Fichier ----
         file_menu = wx.Menu()
         self.mi_add = file_menu.Append(
-            wx.ID_NEW, "&Ajouter URL...\tCtrl+N",
-            "Ajouter un ou plusieurs URLs à télécharger",
+            wx.ID_NEW, _("&Ajouter URL...\tCtrl+N"),
+            _("Ajouter un ou plusieurs URLs à télécharger"),
         )
         self.mi_uge = file_menu.Append(
-            ID_UGE, "Extraction &guidée...\tCtrl+G",
-            "Ouvrir le navigateur intégré pour détecter les médias sur n'importe quelle page",
+            ID_UGE, _("Extraction &guidée...\tCtrl+G"),
+            _("Ouvrir le navigateur intégré pour détecter les médias sur n'importe quelle page"),
         )
         self.mi_login = file_menu.Append(
-            ID_LOGIN, "Se &connecter à un site...",
-            "Ouvrir un navigateur pour se connecter à un site et sauvegarder les cookies",
+            ID_LOGIN, _("Se &connecter à un site..."),
+            _("Ouvrir un navigateur pour se connecter à un site et sauvegarder les cookies"),
         )
         self.mi_search = file_menu.Append(
-            ID_SEARCH, "&Rechercher...\tCtrl+F",
-            "Rechercher des vidéos ou musiques sur YouTube, SoundCloud, etc.",
+            ID_SEARCH, _("&Rechercher...\tCtrl+F"),
+            _("Rechercher des vidéos ou musiques sur YouTube, SoundCloud, etc."),
         )
         self.mi_import = file_menu.Append(
-            ID_IMPORT_LIST, "&Importer une liste d'URLs...",
-            "Charger un fichier texte contenant une URL par ligne",
+            ID_IMPORT_LIST, _("&Importer une liste d'URLs..."),
+            _("Charger un fichier texte contenant une URL par ligne"),
         )
         file_menu.AppendSeparator()
         self.mi_open_folder = file_menu.Append(
-            wx.ID_OPEN, "&Ouvrir le dossier de destination\tCtrl+O",
-            "Ouvrir le dossier de téléchargement dans l'Explorateur",
+            wx.ID_OPEN, _("&Ouvrir le dossier de destination\tCtrl+O"),
+            _("Ouvrir le dossier de téléchargement dans l'Explorateur"),
         )
         file_menu.AppendSeparator()
         self.mi_prefs = file_menu.Append(
-            wx.ID_PREFERENCES, "&Préférences...\tCtrl+P",
-            "Ouvrir les préférences",
+            wx.ID_PREFERENCES, _("&Préférences...\tCtrl+P"),
+            _("Ouvrir les préférences"),
         )
         file_menu.AppendSeparator()
         self.mi_quit = file_menu.Append(
-            wx.ID_EXIT, "&Quitter\tAlt+F4",
-            "Quitter DownAccess",
+            wx.ID_EXIT, _("&Quitter\tAlt+F4"),
+            _("Quitter DownAccess"),
         )
-        mb.Append(file_menu, "&Fichier")
+        mb.Append(file_menu, _("&Fichier"))
 
         # ---- Téléchargements ----
         dl_menu = wx.Menu()
         self.mi_start = dl_menu.Append(
-            ID_START, "Dé&marrer\tF5",
-            "Démarrer les téléchargements en attente",
+            ID_START, _("Dé&marrer\tF5"),
+            _("Démarrer les téléchargements en attente"),
         )
         self.mi_pause = dl_menu.Append(
-            ID_PAUSE, "&Pause / Reprendre\tSpace",
-            "Mettre en pause ou reprendre le téléchargement sélectionné",
+            ID_PAUSE, _("&Pause / Reprendre\tSpace"),
+            _("Mettre en pause ou reprendre le téléchargement sélectionné"),
         )
         self.mi_cancel = dl_menu.Append(
-            ID_CANCEL, "A&nnuler\tDelete",
-            "Supprimer le téléchargement sélectionné",
+            ID_CANCEL, _("A&nnuler\tDelete"),
+            _("Supprimer le téléchargement sélectionné"),
         )
         dl_menu.Append(
-            ID_CLEAR_ALL, "&Vider la liste\tShift+Delete",
-            "Annuler tous les téléchargements et vider la liste",
+            ID_CLEAR_ALL, _("&Vider la liste\tShift+Delete"),
+            _("Annuler tous les téléchargements et vider la liste"),
         )
         dl_menu.AppendSeparator()
         self.mi_retry = dl_menu.Append(
-            ID_RETRY, "&Réessayer\tF2",
-            "Réessayer le téléchargement échoué sélectionné",
+            ID_RETRY, _("&Réessayer\tF2"),
+            _("Réessayer le téléchargement échoué sélectionné"),
         )
         dl_menu.AppendSeparator()
         self.mi_move_up = dl_menu.Append(
-            ID_MOVE_UP, "Mo&nter dans la file\tAlt+Up",
-            "Déplacer l'item sélectionné vers le haut",
+            ID_MOVE_UP, _("Mo&nter dans la file\tAlt+Up"),
+            _("Déplacer l'item sélectionné vers le haut"),
         )
         self.mi_move_down = dl_menu.Append(
-            ID_MOVE_DOWN, "Descen&dre dans la file\tAlt+Down",
-            "Déplacer l'item sélectionné vers le bas",
+            ID_MOVE_DOWN, _("Descen&dre dans la file\tAlt+Down"),
+            _("Déplacer l'item sélectionné vers le bas"),
         )
         dl_menu.AppendSeparator()
         self.mi_clip_toggle = dl_menu.AppendCheckItem(
-            ID_CLIP_TOGGLE, "Surveiller le &presse-papiers\tCtrl+Shift+V",
-            "Détecter automatiquement les URLs copiées",
+            ID_CLIP_TOGGLE, _("Surveiller le &presse-papiers\tCtrl+Shift+V"),
+            _("Détecter automatiquement les URLs copiées"),
         )
         dl_menu.AppendSeparator()
         self.mi_history = dl_menu.Append(
-            ID_HISTORY, "&Historique...\tCtrl+H",
-            "Afficher l'historique des téléchargements",
+            ID_HISTORY, _("&Historique...\tCtrl+H"),
+            _("Afficher l'historique des téléchargements"),
         )
-        mb.Append(dl_menu, "&Téléchargements")
+        mb.Append(dl_menu, _("&Téléchargements"))
 
         # ---- Aide ----
         help_menu = wx.Menu()
         self.mi_shortcuts = help_menu.Append(
-            ID_SHORTCUTS, "Raccourcis &clavier",
-            "Afficher la liste des raccourcis clavier",
+            ID_SHORTCUTS, _("Raccourcis &clavier"),
+            _("Afficher la liste des raccourcis clavier"),
         )
         help_menu.AppendSeparator()
         self.mi_update_ydl = help_menu.Append(
-            ID_UPDATE_YDL, "Mettre à jour &yt-dlp",
-            "Télécharger et installer la dernière version de yt-dlp",
+            ID_UPDATE_YDL, _("Mettre à jour &yt-dlp"),
+            _("Télécharger et installer la dernière version de yt-dlp"),
         )
         self.mi_update_app = help_menu.Append(
-            ID_UPDATE_APP, "Mettre à jour &DownAccess",
-            "Vérifier et installer la dernière version de DownAccess",
+            ID_UPDATE_APP, _("Mettre à jour &DownAccess"),
+            _("Vérifier et installer la dernière version de DownAccess"),
         )
         self.mi_contact = help_menu.Append(
-            ID_CONTACT, "&Contacter le support / Faire une suggestion",
-            "Envoyer un message, une suggestion ou signaler un problème",
+            ID_CONTACT, _("&Contacter le support / Faire une suggestion"),
+            _("Envoyer un message, une suggestion ou signaler un problème"),
         )
         self.mi_github = help_menu.Append(
-            ID_GITHUB, "Page &GitHub du projet",
-            "Ouvrir la page GitHub de DownAccess dans le navigateur",
+            ID_GITHUB, _("Page &GitHub du projet"),
+            _("Ouvrir la page GitHub de DownAccess dans le navigateur"),
         )
         help_menu.AppendSeparator()
         self.mi_about = help_menu.Append(
-            wx.ID_ABOUT, "À &propos de DownAccess",
-            "Informations sur DownAccess",
+            wx.ID_ABOUT, _("À &propos de DownAccess"),
+            _("Informations sur DownAccess"),
         )
-        mb.Append(help_menu, "&Aide")
+        mb.Append(help_menu, _("&Aide"))
 
         self.SetMenuBar(mb)
 
     def _build_toolbar(self) -> None:
         tb = self.CreateToolBar(wx.TB_HORIZONTAL | wx.TB_TEXT | wx.TB_NOICONS)
-        tb.AddTool(wx.ID_NEW,  "Ajouter URL", wx.NullBitmap, shortHelp="Ajouter URL (Ctrl+N)")
+        tb.AddTool(wx.ID_NEW,  _("Ajouter URL"), wx.NullBitmap, shortHelp=_("Ajouter URL (Ctrl+N)"))
         tb.AddSeparator()
-        tb.AddTool(ID_START,  "Démarrer",   wx.NullBitmap, shortHelp="Démarrer (F5)")
-        tb.AddTool(ID_PAUSE,  "Pause",       wx.NullBitmap, shortHelp="Pause/Reprendre (Espace)")
-        tb.AddTool(ID_CANCEL, "Annuler",     wx.NullBitmap, shortHelp="Annuler (Suppr)")
+        tb.AddTool(ID_START,  _("Démarrer"),   wx.NullBitmap, shortHelp=_("Démarrer (F5)"))
+        tb.AddTool(ID_PAUSE,  _("Pause"),      wx.NullBitmap, shortHelp=_("Pause/Reprendre (Espace)"))
+        tb.AddTool(ID_CANCEL, _("Annuler"),    wx.NullBitmap, shortHelp=_("Annuler (Suppr)"))
         tb.Realize()
 
     def _build_main_panel(self) -> None:
@@ -710,7 +714,7 @@ class MainWindow(wx.Frame):
         # TextCtrl read-only pour que NVDA lise directement le contenu au focus.
         self.lbl_empty = wx.TextCtrl(
             panel,
-            value=(
+            value=_(
                 "Aucun téléchargement pour le moment.\r\n\r\n"
                 "Ajoutez une URL via le menu Fichier, collez-la depuis le "
                 "presse-papiers, glissez-déposez du texte sur cette fenêtre, "
@@ -731,7 +735,7 @@ class MainWindow(wx.Frame):
                                              style=wx.ST_ELLIPSIZE_END)
         self.gauge = wx.Gauge(panel, range=100,
                               style=wx.GA_HORIZONTAL | wx.GA_SMOOTH,
-                              name="Progression du téléchargement actif")
+                              name=_("Progression du téléchargement actif"))
         prog_sizer.Add(self.lbl_gauge_title, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 8)
         prog_sizer.Add(self.gauge, 1, wx.EXPAND | wx.ALL, 6)
         sizer.Add(prog_sizer, 0, wx.EXPAND)
@@ -746,8 +750,8 @@ class MainWindow(wx.Frame):
     def _build_statusbar(self) -> None:
         self.statusbar = self.CreateStatusBar(2)
         self.statusbar.SetStatusWidths([-1, 220])
-        self.statusbar.SetStatusText("Prêt", 0)
-        self.statusbar.SetStatusText("0 téléchargement(s)", 1)
+        self.statusbar.SetStatusText(_("Prêt"), 0)
+        self.statusbar.SetStatusText(_("0 téléchargement(s)"), 1)
 
     # ------------------------------------------------------------------
     # Liaison des événements
@@ -802,8 +806,8 @@ class MainWindow(wx.Frame):
             n            = dlg.get_n()
 
         search_url = f"{site_prefix}{n}:{query}"
-        self.set_status(f"Recherche en cours : {query}…")
-        speech.speak(f"Recherche sur {site_label}…")
+        self.set_status(_("Recherche en cours : {query}…").format(query=query))
+        speech.speak(_("Recherche sur {site}…").format(site=site_label))
 
         import threading
         from app.core.downloader import Downloader, DownloadError
@@ -834,23 +838,23 @@ class MainWindow(wx.Frame):
 
     def _on_search_done(self, site_label: str, result: dict) -> None:
         if "error" in result:
-            self.set_status("Erreur lors de la recherche.")
+            self.set_status(_("Erreur lors de la recherche."))
             wx.MessageBox(
-                f"Erreur de recherche :\n\n{result['error']}",
-                "Erreur", wx.OK | wx.ICON_ERROR,
+                _("Erreur de recherche :\n\n{error}").format(error=result["error"]),
+                _("Erreur"), wx.OK | wx.ICON_ERROR,
             )
             return
 
         entries = result.get("entries", [])
         if not entries:
-            self.set_status("Aucun résultat trouvé.")
-            speech.speak("Aucun résultat trouvé.")
+            self.set_status(_("Aucun résultat trouvé."))
+            speech.speak(_("Aucun résultat trouvé."))
             return
 
         with SearchResultsDialog(self, site_label, entries,
                                   settings=self.settings) as dlg:
             if dlg.ShowModal() != wx.ID_OK:
-                self.set_status("Recherche annulée.")
+                self.set_status(_("Recherche annulée."))
                 return
             selected = dlg.get_selected_entries()
             fmt      = dlg.get_format()
@@ -871,7 +875,10 @@ class MainWindow(wx.Frame):
                 enqueued += 1
 
         n = enqueued
-        msg = f"{n} résultat{'s' if n > 1 else ''} ajouté{'s' if n > 1 else ''} à la file."
+        if n > 1:
+            msg = _("{count} résultats ajoutés à la file.").format(count=n)
+        else:
+            msg = _("{count} résultat ajouté à la file.").format(count=n)
         self.set_status(msg)
         speech.speak(msg)
 
@@ -879,14 +886,16 @@ class MainWindow(wx.Frame):
         # Dialogue d'explication à la première utilisation
         if not self.settings.get("_uge_intro_shown"):
             wx.MessageBox(
-                "L'extraction guidée ouvre votre navigateur (Chrome, Edge ou Brave) "
-                "à côté de DownAccess.\n\n"
-                "Naviguez sur le site et lancez la vidéo dans le navigateur.\n"
-                "Les médias détectés apparaîtront dans la fenêtre DownAccess.\n\n"
-                "Vous pourrez ensuite les ajouter à la file de téléchargement.\n\n"
-                "Note : les contenus protégés par DRM (Netflix, Disney+, Prime Video…) "
-                "ne sont pas pris en charge.",
-                "Extraction guidée — Comment ça marche",
+                _(
+                    "L'extraction guidée ouvre votre navigateur (Chrome, Edge ou Brave) "
+                    "à côté de DownAccess.\n\n"
+                    "Naviguez sur le site et lancez la vidéo dans le navigateur.\n"
+                    "Les médias détectés apparaîtront dans la fenêtre DownAccess.\n\n"
+                    "Vous pourrez ensuite les ajouter à la file de téléchargement.\n\n"
+                    "Note : les contenus protégés par DRM (Netflix, Disney+, Prime Video…) "
+                    "ne sont pas pris en charge."
+                ),
+                _("Extraction guidée — Comment ça marche"),
                 wx.OK | wx.ICON_INFORMATION,
                 self,
             )
@@ -904,13 +913,15 @@ class MainWindow(wx.Frame):
         # Dialogue d'explication à la première utilisation
         if not self.settings.get("_login_intro_shown"):
             wx.MessageBox(
-                "Cette fonction ouvre votre navigateur pour vous connecter à un site.\n\n"
-                "Vos cookies de connexion seront sauvegardés dans votre navigateur.\n"
-                "Si un téléchargement échoue, DownAccess vous proposera automatiquement\n"
-                "de réessayer avec les cookies du navigateur.\n\n"
-                "Note : les contenus protégés par DRM (Netflix, Disney+, Prime Video…) "
-                "ne sont pas pris en charge.",
-                "Connexion à un site — Comment ça marche",
+                _(
+                    "Cette fonction ouvre votre navigateur pour vous connecter à un site.\n\n"
+                    "Vos cookies de connexion seront sauvegardés dans votre navigateur.\n"
+                    "Si un téléchargement échoue, DownAccess vous proposera automatiquement\n"
+                    "de réessayer avec les cookies du navigateur.\n\n"
+                    "Note : les contenus protégés par DRM (Netflix, Disney+, Prime Video…) "
+                    "ne sont pas pris en charge."
+                ),
+                _("Connexion à un site — Comment ça marche"),
                 wx.OK | wx.ICON_INFORMATION,
                 self,
             )
@@ -946,13 +957,15 @@ class MainWindow(wx.Frame):
         """
         dlg = wx.MessageDialog(
             self,
-            "Cette URL contient une vidéo et une playlist.\n\n"
-            "Voulez-vous télécharger la playlist entière\n"
-            "ou uniquement cette vidéo ?",
-            "Vidéo ou playlist ?",
+            _(
+                "Cette URL contient une vidéo et une playlist.\n\n"
+                "Voulez-vous télécharger la playlist entière\n"
+                "ou uniquement cette vidéo ?"
+            ),
+            _("Vidéo ou playlist ?"),
             wx.YES_NO | wx.CANCEL | wx.ICON_QUESTION,
         )
-        dlg.SetYesNoCancelLabels("La playlist", "La vidéo", "Annuler")
+        dlg.SetYesNoCancelLabels(_("La playlist"), _("La vidéo"), _("Annuler"))
         result = dlg.ShowModal()
         dlg.Destroy()
 
@@ -994,8 +1007,11 @@ class MainWindow(wx.Frame):
         # Si la mise à jour yt-dlp est en cours, mettre en attente
         if self._updater_running:
             self._pending_downloads.append((url, format_spec, format_id, playlist_title))
-            self.set_status("URL en file d'attente — mise à jour yt-dlp en cours…")
-            speech.speak("URL ajoutée. Le téléchargement démarrera après la mise à jour de yt-dlp.", interrupt=False)
+            self.set_status(_("URL en file d'attente — mise à jour yt-dlp en cours…"))
+            speech.speak(
+                _("URL ajoutée. Le téléchargement démarrera après la mise à jour de yt-dlp."),
+                interrupt=False,
+            )
             return
         dl_id = self._queue.add(url, format_spec=format_spec, format_id=format_id,
                                 referer=referer, cookies=cookies,
@@ -1004,9 +1020,9 @@ class MainWindow(wx.Frame):
                                 skip_info=skip_info,
                                 subtitles_override=subtitles_override)
         if format_spec == "auto":
-            label = "Auto"
+            label = _("Auto")
         elif format_spec == "subtitles_only":
-            label = "Sous-titres"
+            label = _("Sous-titres")
         else:
             label = format_spec.upper()
         self.download_list.add_item(dl_id, url, site="—", fmt=label)
@@ -1018,14 +1034,14 @@ class MainWindow(wx.Frame):
         }
         self._dl_data["__last_fmt__"] = format_spec
         self.set_count(self.download_list.count())
-        self.set_status(f"URL ajoutée : {url}")
-        speech.speak(f"Ajouté à la file.", interrupt=False)
+        self.set_status(_("URL ajoutée : {url}").format(url=url))
+        speech.speak(_("Ajouté à la file."), interrupt=False)
 
     def _enqueue_with_format_selection(self, url: str,
                                        subtitles_override: bool | None = None) -> None:
         """Fetch info → FormatDialog → enqueue avec format_id."""
-        self.set_status("Récupération des formats disponibles…")
-        speech.speak("Récupération des formats disponibles.")
+        self.set_status(_("Récupération des formats disponibles…"))
+        speech.speak(_("Récupération des formats disponibles."))
 
         import threading
         from app.core.downloader import Downloader, DownloadError
@@ -1046,23 +1062,23 @@ class MainWindow(wx.Frame):
     def _on_formats_ready(self, url: str, result: dict) -> None:
         subs = result.get("subs")
         if "error" in result:
-            self.set_status("Impossible de récupérer les formats.")
+            self.set_status(_("Impossible de récupérer les formats."))
             wx.MessageBox(
-                f"Impossible de récupérer les formats :\n\n{result['error']}",
-                "Erreur", wx.OK | wx.ICON_ERROR,
+                _("Impossible de récupérer les formats :\n\n{error}").format(error=result["error"]),
+                _("Erreur"), wx.OK | wx.ICON_ERROR,
             )
             return
 
         info = result.get("info")
         if not info:
-            self.set_status("Aucune information disponible.")
+            self.set_status(_("Aucune information disponible."))
             return
 
         formats = info.raw_formats if hasattr(info, "raw_formats") else []
         if not formats:
             # Pas de formats détaillés → enqueue en auto
             self._enqueue_url(url, "auto", subtitles_override=subs)
-            self.set_status("Formats non disponibles, téléchargement en qualité auto.")
+            self.set_status(_("Formats non disponibles, téléchargement en qualité auto."))
             return
 
         with FormatDialog(self, info.title, formats) as dlg:
@@ -1071,7 +1087,7 @@ class MainWindow(wx.Frame):
                 self._enqueue_url(url, "manual", format_id=fmt_id,
                                   subtitles_override=subs)
             else:
-                self.set_status("Sélection de format annulée.")
+                self.set_status(_("Sélection de format annulée."))
 
     def _on_open_folder(self, _event) -> None:
         self._open_download_folder()
@@ -1082,7 +1098,20 @@ class MainWindow(wx.Frame):
                 self.settings = dlg.get_settings()
                 cfg.save(self.settings)
                 self._queue._settings = self.settings
-                speech.speak("Préférences enregistrées.")
+                speech.speak(_("Préférences enregistrées."))
+                if dlg.restart_requested():
+                    self._restart_app()
+
+    def _restart_app(self) -> None:
+        if getattr(sys, "frozen", False):
+            args = [sys.executable] + sys.argv[1:]
+        else:
+            args = [sys.executable] + sys.argv
+        try:
+            subprocess.Popen(args, close_fds=True)
+        except Exception:
+            _log.exception("Échec du redémarrage automatique")
+        self.Close(force=True)
 
     def _on_quit(self, _event) -> None:
         self.Close()
@@ -1090,40 +1119,40 @@ class MainWindow(wx.Frame):
     def _on_start(self, _event) -> None:
         # Sera connecté au QueueManager en Phase 2
         wx.MessageBox(
-            "Démarrage de la file disponible en Phase 2.",
+            _("Démarrage de la file disponible en Phase 2."),
             APP_NAME, wx.OK | wx.ICON_INFORMATION,
         )
 
     def _on_pause(self, _event) -> None:
         dl_id = self.download_list.get_selected_id()
         if dl_id is None:
-            speech.speak("Aucun téléchargement sélectionné.")
+            speech.speak(_("Aucun téléchargement sélectionné."))
             return
         if not self._queue.is_active(dl_id):
-            self.set_status("Ce téléchargement n'est pas en cours.")
-            speech.speak("Ce téléchargement n'est pas en cours.")
+            self.set_status(_("Ce téléchargement n'est pas en cours."))
+            speech.speak(_("Ce téléchargement n'est pas en cours."))
             return
         if self._queue.is_paused(dl_id):
             self._queue.resume(dl_id)
             self.download_list.set_status(dl_id, "En cours")
-            speech.speak("Téléchargement repris.")
-            self.set_status("Téléchargement repris.")
+            speech.speak(_("Téléchargement repris."))
+            self.set_status(_("Téléchargement repris."))
         else:
             self._queue.pause(dl_id)
             self.download_list.set_status(dl_id, "En pause")
-            speech.speak("Téléchargement mis en pause.")
-            self.set_status("Téléchargement mis en pause.")
+            speech.speak(_("Téléchargement mis en pause."))
+            self.set_status(_("Téléchargement mis en pause."))
 
     def _on_cancel(self, _event) -> None:
         dl_id = self.download_list.get_selected_id()
         if dl_id is None:
-            self.set_status("Aucun téléchargement sélectionné.")
+            self.set_status(_("Aucun téléchargement sélectionné."))
             return
         status = self.download_list.get_selected_status()
         if status in ("En cours", "En attente"):
             if wx.MessageBox(
-                "Annuler ce téléchargement ?",
-                "Confirmer l'annulation",
+                _("Annuler ce téléchargement ?"),
+                _("Confirmer l'annulation"),
                 wx.YES_NO | wx.ICON_QUESTION,
             ) != wx.YES:
                 return
@@ -1131,22 +1160,24 @@ class MainWindow(wx.Frame):
         self.download_list.remove_selected()
         self._progress.pop(dl_id, None)
         self._dl_data.pop(dl_id, None)
-        self.set_status("Téléchargement supprimé de la liste.")
-        speech.speak("Supprimé.")
+        self.set_status(_("Téléchargement supprimé de la liste."))
+        speech.speak(_("Supprimé."))
         self.set_count(self.download_list.count())
 
     def _on_clear_all(self, _event) -> None:
         if self.download_list.count() == 0:
-            self.set_status("La liste est déjà vide.")
+            self.set_status(_("La liste est déjà vide."))
             return
         # Vérifier s'il y a des téléchargements en cours
         active = self.download_list.count_by_status("En cours")
         pending = self.download_list.count_by_status("En attente")
         if active + pending > 0:
-            msg = f"Il y a {active + pending} téléchargement(s) en cours ou en attente.\n\nTout annuler et vider la liste ?"
+            msg = _("Il y a {count} téléchargement(s) en cours ou en attente.\n\nTout annuler et vider la liste ?").format(
+                count=active + pending
+            )
         else:
-            msg = "Vider toute la liste ?"
-        if wx.MessageBox(msg, "Confirmer", wx.YES_NO | wx.ICON_QUESTION) != wx.YES:
+            msg = _("Vider toute la liste ?")
+        if wx.MessageBox(msg, _("Confirmer"), wx.YES_NO | wx.ICON_QUESTION) != wx.YES:
             return
         # Annuler tous les téléchargements actifs
         for dl_id in self.download_list.get_all_ids():
@@ -1156,17 +1187,17 @@ class MainWindow(wx.Frame):
         self._dl_data.clear()
         self._reset_gauge()
         self.set_count(0)
-        self.set_status("Liste vidée.")
-        speech.speak("Liste vidée.")
+        self.set_status(_("Liste vidée."))
+        speech.speak(_("Liste vidée."))
 
     def _on_retry(self, _event) -> None:
         dl_id = self.download_list.get_selected_id()
         if dl_id is None:
-            self.set_status("Aucun téléchargement sélectionné.")
+            self.set_status(_("Aucun téléchargement sélectionné."))
             return
         data = self._dl_data.get(dl_id)
         if not data:
-            self.set_status("Impossible de réessayer : données introuvables.")
+            self.set_status(_("Impossible de réessayer : données introuvables."))
             return
         # Supprimer l'item échoué et relancer
         self.download_list.remove_selected()
@@ -1180,7 +1211,7 @@ class MainWindow(wx.Frame):
             playlist_title=data.get("playlist_title"),
             playlist_number=data.get("playlist_number"),
         )
-        self.set_status("Téléchargement relancé.")
+        self.set_status(_("Téléchargement relancé."))
 
     def _on_move_up(self, _event) -> None:
         dl_id = self.download_list.get_selected_id()
@@ -1189,9 +1220,9 @@ class MainWindow(wx.Frame):
         moved = self._queue.move_up(dl_id)
         if moved:
             self.download_list.move_item_up(dl_id)
-            speech.speak("Déplacé vers le haut.", interrupt=False)
+            speech.speak(_("Déplacé vers le haut."), interrupt=False)
         else:
-            speech.speak("Impossible de déplacer.", interrupt=False)
+            speech.speak(_("Impossible de déplacer."), interrupt=False)
 
     def _on_move_down(self, _event) -> None:
         dl_id = self.download_list.get_selected_id()
@@ -1200,16 +1231,16 @@ class MainWindow(wx.Frame):
         moved = self._queue.move_down(dl_id)
         if moved:
             self.download_list.move_item_down(dl_id)
-            speech.speak("Déplacé vers le bas.", interrupt=False)
+            speech.speak(_("Déplacé vers le bas."), interrupt=False)
         else:
-            speech.speak("Impossible de déplacer.", interrupt=False)
+            speech.speak(_("Impossible de déplacer."), interrupt=False)
 
     def _on_import_urls(self, _event) -> None:
         """Importe un fichier texte contenant des URLs (une par ligne)."""
         with wx.FileDialog(
             self,
-            "Importer une liste d'URLs",
-            wildcard="Fichiers texte (*.txt)|*.txt|Tous les fichiers|*",
+            _("Importer une liste d'URLs"),
+            wildcard=_("Fichiers texte (*.txt)|*.txt|Tous les fichiers|*"),
             style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST,
         ) as dlg:
             if dlg.ShowModal() != wx.ID_OK:
@@ -1220,8 +1251,8 @@ class MainWindow(wx.Frame):
                 content = f.read()
         except OSError as exc:
             wx.MessageBox(
-                f"Impossible de lire le fichier :\n{exc}",
-                "Erreur de lecture",
+                _("Impossible de lire le fichier :\n{error}").format(error=exc),
+                _("Erreur de lecture"),
                 wx.OK | wx.ICON_ERROR,
                 self,
             )
@@ -1233,8 +1264,8 @@ class MainWindow(wx.Frame):
         urls = [u for u in _URL_RE.findall(text or "") if not _is_bare_domain(u)]
         if not urls:
             wx.MessageBox(
-                "Le texte déposé ne contient aucune URL valide.",
-                "Aucune URL détectée",
+                _("Le texte déposé ne contient aucune URL valide."),
+                _("Aucune URL détectée"),
                 wx.OK | wx.ICON_INFORMATION,
                 self,
             )
@@ -1266,16 +1297,19 @@ class MainWindow(wx.Frame):
         """Ctrl+V global : colle l'URL du presse-papiers sans ouvrir de dialogue."""
         urls = _urls_from_clipboard()
         if not urls:
-            self.set_status("Aucune URL valide dans le presse-papiers.")
-            speech.speak("Aucune URL dans le presse-papiers.")
+            self.set_status(_("Aucune URL valide dans le presse-papiers."))
+            speech.speak(_("Aucune URL dans le presse-papiers."))
             return
         for url in urls:
             if _is_bare_domain(url):
-                self.set_status(f"URL ignorée (domaine seul) : {url}")
+                self.set_status(_("URL ignorée (domaine seul) : {url}").format(url=url))
                 continue
             self._enqueue_url(url)
         n = len(urls)
-        msg = f"{n} URL{'s' if n > 1 else ''} ajoutée{'s' if n > 1 else ''} depuis le presse-papiers."
+        if n > 1:
+            msg = _("{count} URLs ajoutées depuis le presse-papiers.").format(count=n)
+        else:
+            msg = _("{count} URL ajoutée depuis le presse-papiers.").format(count=n)
         self.set_status(msg)
         speech.speak(msg)
 
@@ -1288,12 +1322,12 @@ class MainWindow(wx.Frame):
             self._clip_seen.clear()
             self._clip_last = _clipboard_text()
             self._clip_timer.Start(1500)
-            speech.speak("Surveillance du presse-papiers activée.")
-            self.set_status("Surveillance du presse-papiers activée.")
+            speech.speak(_("Surveillance du presse-papiers activée."))
+            self.set_status(_("Surveillance du presse-papiers activée."))
         else:
             self._clip_timer.Stop()
-            speech.speak("Surveillance du presse-papiers désactivée.")
-            self.set_status("Surveillance du presse-papiers désactivée.")
+            speech.speak(_("Surveillance du presse-papiers désactivée."))
+            self.set_status(_("Surveillance du presse-papiers désactivée."))
 
     def _on_clip_tick(self, _event) -> None:
         """Appelé toutes les 1,5 s — vérifie si une nouvelle URL a été copiée."""
@@ -1308,12 +1342,12 @@ class MainWindow(wx.Frame):
             if _is_bare_domain(url):
                 continue
             self._enqueue_url(url)
-            msg = f"URL détectée et ajoutée : {url}"
+            msg = _("URL détectée et ajoutée : {url}").format(url=url)
             self.set_status(msg)
             speech.speak(msg)
 
     def _on_shortcuts(self, _event) -> None:
-        msg = (
+        msg = _(
             "Ctrl+N           Ajouter URL(s)\n"
             "Ctrl+F           Rechercher (YouTube, SoundCloud...)\n"
             "Ctrl+G           Extraction guidée (navigateur intégré)\n"
@@ -1331,11 +1365,11 @@ class MainWindow(wx.Frame):
             "Ctrl+P           Préférences\n"
             "Alt+F4           Quitter"
         )
-        dlg = wx.Dialog(self, title="Raccourcis clavier", size=(450, 400))
+        dlg = wx.Dialog(self, title=_("Raccourcis clavier"), size=(450, 400))
         sizer = wx.BoxSizer(wx.VERTICAL)
         txt = wx.TextCtrl(dlg, value=msg, style=wx.TE_MULTILINE | wx.TE_READONLY)
         sizer.Add(txt, 1, wx.EXPAND | wx.ALL, 10)
-        btn = wx.Button(dlg, wx.ID_CLOSE, "Fermer")
+        btn = wx.Button(dlg, wx.ID_CLOSE, _("Fermer"))
         btn.Bind(wx.EVT_BUTTON, lambda e: dlg.EndModal(wx.ID_CLOSE))
         sizer.Add(btn, 0, wx.ALIGN_CENTER | wx.BOTTOM, 10)
         dlg.SetSizer(sizer)
@@ -1346,8 +1380,8 @@ class MainWindow(wx.Frame):
 
     def _on_update_app(self, _event) -> None:
         self.mi_update_app.Enable(False)
-        self.set_status("Vérification de la mise à jour DownAccess…")
-        speech.speak("Vérification de la mise à jour.")
+        self.set_status(_("Vérification de la mise à jour DownAccess…"))
+        speech.speak(_("Vérification de la mise à jour."))
         app_updater.check_for_update(
             on_done=lambda status, info, notes: wx.CallAfter(self._on_app_update_checked, status, info, notes)
         )
@@ -1356,11 +1390,11 @@ class MainWindow(wx.Frame):
         self.mi_update_app.Enable(True)
         update_started = False
         if status == "up_to_date":
-            msg = f"DownAccess est à jour. Version {info}."
+            msg = _("DownAccess est à jour. Version {version}.").format(version=info)
             self.set_status(msg)
             wx.MessageBox(
-                f"Vous utilisez déjà la dernière version de DownAccess.\n\nVersion actuelle : {info}",
-                "Aucune mise à jour disponible",
+                _("Vous utilisez déjà la dernière version de DownAccess.\n\nVersion actuelle : {version}").format(version=info),
+                _("Aucune mise à jour disponible"),
                 wx.OK | wx.ICON_INFORMATION,
                 self,
             )
@@ -1380,16 +1414,15 @@ class MainWindow(wx.Frame):
                     on_quit=lambda: wx.CallAfter(self.Close),
                 )
             else:
-                self.set_status(f"Mise à jour DownAccess {info} reportée.")
+                self.set_status(_("Mise à jour DownAccess {version} reportée.").format(version=info))
             dlg.Destroy()
         elif status == "error":
-            msg = "Impossible de vérifier la mise à jour."
+            msg = _("Impossible de vérifier la mise à jour.")
             self.set_status(msg)
             speech.speak(msg)
             wx.MessageBox(
-                f"Impossible de vérifier la mise à jour.\n\n{info}\n\n"
-                "Vérifiez votre connexion et réessayez.",
-                "Erreur de vérification",
+                _("Impossible de vérifier la mise à jour.\n\n{error}\n\nVérifiez votre connexion et réessayez.").format(error=info),
+                _("Erreur de vérification"),
                 wx.OK | wx.ICON_ERROR,
                 self,
             )
@@ -1398,7 +1431,7 @@ class MainWindow(wx.Frame):
             wx.CallAfter(self.download_list.SetFocus)
 
     def _on_app_dl_progress(self, percent: float) -> None:
-        self.set_status(f"Téléchargement de la mise à jour… {percent:.0f} %")
+        self.set_status(_("Téléchargement de la mise à jour… {percent} %").format(percent=int(percent)))
         if hasattr(self, "_app_dl_progress_dlg") and self._app_dl_progress_dlg:
             self._app_dl_progress_dlg.update(percent)
 
@@ -1407,10 +1440,10 @@ class MainWindow(wx.Frame):
         if hasattr(self, "_app_dl_progress_dlg") and self._app_dl_progress_dlg:
             self._app_dl_progress_dlg.Destroy()
             self._app_dl_progress_dlg = None
-        self.set_status("Erreur lors du téléchargement de la mise à jour.")
+        self.set_status(_("Erreur lors du téléchargement de la mise à jour."))
         wx.MessageBox(
-            f"Impossible de télécharger la mise à jour :\n\n{message}",
-            "Erreur de mise à jour", wx.OK | wx.ICON_ERROR, self,
+            _("Impossible de télécharger la mise à jour :\n\n{error}").format(error=message),
+            _("Erreur de mise à jour"), wx.OK | wx.ICON_ERROR, self,
         )
 
     def check_app_update_at_startup(self) -> None:
@@ -1421,8 +1454,8 @@ class MainWindow(wx.Frame):
         app_updater.check_for_update(on_done=_on_done)
 
     def _on_update_ytdlp(self, _event) -> None:
-        self.set_status("Vérification de la version yt-dlp…")
-        speech.speak("Vérification en cours.")
+        self.set_status(_("Vérification de la version yt-dlp…"))
+        speech.speak(_("Vérification en cours."))
         self.mi_update_ydl.Enable(False)
 
         updater.check_and_update(
@@ -1450,11 +1483,13 @@ class MainWindow(wx.Frame):
 
     def _on_about(self, _event) -> None:
         wx.MessageBox(
-            "DownAccess\n\n"
-            "Téléchargeur vidéo/audio Windows,\n"
-            "100 % accessible NVDA.\n\n"
-            "Propulsé par yt-dlp et ffmpeg.",
-            "À propos de DownAccess",
+            _(
+                "DownAccess\n\n"
+                "Téléchargeur vidéo/audio Windows,\n"
+                "100 % accessible NVDA.\n\n"
+                "Propulsé par yt-dlp et ffmpeg."
+            ),
+            _("À propos de DownAccess"),
             wx.OK | wx.ICON_INFORMATION,
         )
 
@@ -1462,10 +1497,8 @@ class MainWindow(wx.Frame):
         n_active = self._queue.active_count
         if n_active > 0 and event.CanVeto():
             result = wx.MessageBox(
-                f"{n_active} téléchargement(s) en cours.\n\n"
-                "Quitter maintenant les annulera.\n\n"
-                "Voulez-vous vraiment quitter ?",
-                "Téléchargements en cours — DownAccess",
+                _("{count} téléchargement(s) en cours.\n\nQuitter maintenant les annulera.\n\nVoulez-vous vraiment quitter ?").format(count=n_active),
+                _("Téléchargements en cours — DownAccess"),
                 wx.YES_NO | wx.NO_DEFAULT | wx.ICON_QUESTION,
                 self,
             )
@@ -1502,35 +1535,34 @@ class MainWindow(wx.Frame):
 
         # Déclenchement manuel depuis le menu
         if status == "up_to_date":
-            self.set_status(f"yt-dlp est à jour. Version {info}.")
+            self.set_status(_("yt-dlp est à jour. Version {version}.").format(version=info))
             wx.MessageBox(
-                f"yt-dlp est déjà à jour.\n\nVersion actuelle : {info}",
-                "yt-dlp à jour",
+                _("yt-dlp est déjà à jour.\n\nVersion actuelle : {version}").format(version=info),
+                _("yt-dlp à jour"),
                 wx.OK | wx.ICON_INFORMATION,
                 self,
             )
         elif status == "updated":
-            self.set_status(f"yt-dlp mis à jour. Version {info}.")
+            self.set_status(_("yt-dlp mis à jour. Version {version}.").format(version=info))
             wx.MessageBox(
-                f"yt-dlp a été mis à jour avec succès.\n\nNouvelle version : {info}",
-                "yt-dlp mis à jour",
+                _("yt-dlp a été mis à jour avec succès.\n\nNouvelle version : {version}").format(version=info),
+                _("yt-dlp mis à jour"),
                 wx.OK | wx.ICON_INFORMATION,
                 self,
             )
         elif status == "installed":
-            self.set_status(f"yt-dlp installé. Version {info}.")
+            self.set_status(_("yt-dlp installé. Version {version}.").format(version=info))
             wx.MessageBox(
-                f"yt-dlp a été installé avec succès.\n\nVersion : {info}",
-                "yt-dlp installé",
+                _("yt-dlp a été installé avec succès.\n\nVersion : {version}").format(version=info),
+                _("yt-dlp installé"),
                 wx.OK | wx.ICON_INFORMATION,
                 self,
             )
         elif status == "error":
-            self.set_status("Échec de la mise à jour de yt-dlp.")
+            self.set_status(_("Échec de la mise à jour de yt-dlp."))
             wx.MessageBox(
-                f"La mise à jour de yt-dlp a échoué :\n\n{info}\n\n"
-                "Vérifiez votre connexion et réessayez via Aide → Mettre à jour yt-dlp.",
-                "Erreur yt-dlp",
+                _("La mise à jour de yt-dlp a échoué :\n\n{error}\n\nVérifiez votre connexion et réessayez via Aide → Mettre à jour yt-dlp.").format(error=info),
+                _("Erreur yt-dlp"),
                 wx.OK | wx.ICON_ERROR,
                 self,
             )
@@ -1543,10 +1575,11 @@ class MainWindow(wx.Frame):
             pending = self._pending_downloads[:]
             self._pending_downloads.clear()
             n = len(pending)
-            speech.speak(
-                f"Démarrage de {n} téléchargement{'s' if n > 1 else ''} en attente.",
-                interrupt=False,
-            )
+            if n > 1:
+                msg = _("Démarrage de {count} téléchargements en attente.").format(count=n)
+            else:
+                msg = _("Démarrage de {count} téléchargement en attente.").format(count=n)
+            speech.speak(msg, interrupt=False)
             for url, fmt, fid, plt in pending:
                 self._enqueue_url(url, fmt, fid, playlist_title=plt)
 
@@ -1556,7 +1589,7 @@ class MainWindow(wx.Frame):
 
     def set_count(self, count: int) -> None:
         """Met à jour le compteur de téléchargements dans la barre de statut."""
-        self.statusbar.SetStatusText(f"{count} téléchargement(s)", 1)
+        self.statusbar.SetStatusText(_("{count} téléchargement(s)").format(count=count), 1)
         # Bascule entre le message de liste vide et la liste de téléchargements
         empty = (count == 0)
         if self.lbl_empty.IsShown() != empty:
@@ -1592,4 +1625,3 @@ def _urls_from_clipboard() -> list[str]:
     """Extrait les URLs http/https du presse-papiers."""
     text = _clipboard_text()
     return [u for u in _URL_RE.findall(text) if u]
-
