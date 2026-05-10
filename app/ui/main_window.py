@@ -847,7 +847,8 @@ class MainWindow(wx.Frame):
             speech.speak("Aucun résultat trouvé.")
             return
 
-        with SearchResultsDialog(self, site_label, entries) as dlg:
+        with SearchResultsDialog(self, site_label, entries,
+                                  settings=self.settings) as dlg:
             if dlg.ShowModal() != wx.ID_OK:
                 self.set_status("Recherche annulée.")
                 return

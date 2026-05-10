@@ -89,7 +89,8 @@ class SearchResultsDialog(wx.Dialog):
     L'utilisateur sélectionne puis clique Télécharger.
     """
 
-    def __init__(self, parent, site_label: str, results: list[dict]):
+    def __init__(self, parent, site_label: str, results: list[dict],
+                 settings: dict | None = None):
         super().__init__(
             parent,
             title=f"Résultats — {site_label}",
@@ -97,6 +98,7 @@ class SearchResultsDialog(wx.Dialog):
             size=(820, 480),
         )
         self._results = results
+        self._settings = settings or {}
         self._build_ui(site_label)
         self._populate()
         self.Bind(wx.EVT_CLOSE, self._on_close)
@@ -276,11 +278,32 @@ class SearchResultsDialog(wx.Dialog):
     # -- Téléchargement -------------------------------------------------
 
     def _on_download(self, _event) -> None:
-        if not self.get_selected_entries():
+        selected = self.get_selected_entries()
+        if not selected:
             msg = "Veuillez cocher au moins un résultat à télécharger (touche Espace)."
             speech.speak(msg)
             wx.MessageBox(msg, "Aucune sélection", wx.OK | wx.ICON_INFORMATION, self)
             return
+
+        bulk_types = {e.get("_dl_type") for e in selected
+                      if e.get("_dl_type") in ("Chaîne", "Playlist")}
+        if bulk_types:
+            from app.ui.confirm_dialog import confirm_with_memory
+            labels = []
+            if "Chaîne" in bulk_types:
+                labels.append("une chaîne (potentiellement des centaines de vidéos)")
+            if "Playlist" in bulk_types:
+                labels.append("une playlist complète")
+            joined = " et ".join(labels)
+            if not confirm_with_memory(
+                self, self._settings, "search_bulk_download",
+                f"Votre sélection contient {joined}.\n\n"
+                "Le téléchargement peut prendre beaucoup de temps "
+                "et d'espace disque. Continuer ?",
+                "Téléchargement volumineux",
+            ):
+                return
+
         self.EndModal(wx.ID_OK)
 
     def get_selected_entries(self) -> list[dict]:

@@ -25,6 +25,7 @@ DEFAULTS: dict = {
     "user_email": "",
     "cookie_sites": [],
     "intercept_use_page_title": True,
+    "suppressed_warnings": [],     # clés des avertissements masqués
 }
 
 

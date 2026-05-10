@@ -142,6 +142,12 @@ class SettingsDialog(wx.Dialog):
             label="Utiliser le titre de la page comme nom de fichier (interception)",
             name="Utiliser le titre de la page comme nom de fichier")
 
+        # Avertissements
+        lbl_warn = wx.StaticText(page, label="Avertissements :")
+        self.btn_reset_warnings = wx.Button(page,
+            label="Réinitialiser tous les avertissements",
+            name="Réinitialiser tous les avertissements")
+
         sizer.Add(lbl_folder,        0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 12)
         sizer.Add(row_folder,        0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 6)
         sizer.Add(lbl_concurrent,    0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 12)
@@ -155,6 +161,8 @@ class SettingsDialog(wx.Dialog):
         sizer.Add(self.chk_organize_playlist, 0, wx.LEFT | wx.RIGHT | wx.TOP, 4)
         sizer.Add(lbl_uge,                    0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 12)
         sizer.Add(self.chk_intercept_title,   0, wx.LEFT | wx.RIGHT | wx.TOP, 6)
+        sizer.Add(lbl_warn,                   0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 12)
+        sizer.Add(self.btn_reset_warnings,    0, wx.LEFT | wx.RIGHT | wx.TOP, 6)
 
         page.SetSizer(sizer)
         return page
@@ -412,6 +420,24 @@ class SettingsDialog(wx.Dialog):
         self.btn_browse.Bind(wx.EVT_BUTTON, self._on_browse_folder)
         self.btn_ffmpeg_browse.Bind(wx.EVT_BUTTON, self._on_browse_ffmpeg)
         self.btn_ffmpeg_test.Bind(wx.EVT_BUTTON,   self._on_test_ffmpeg)
+        self.btn_reset_warnings.Bind(wx.EVT_BUTTON, self._on_reset_warnings)
+
+    def _on_reset_warnings(self, _event) -> None:
+        n = len(self._settings.get("suppressed_warnings") or [])
+        if n == 0:
+            wx.MessageBox(
+                "Aucun avertissement n'est actuellement masqué.",
+                "Avertissements",
+                wx.OK | wx.ICON_INFORMATION, self,
+            )
+            return
+        self._settings["suppressed_warnings"] = []
+        cfg.save(self._settings)
+        wx.MessageBox(
+            f"{n} avertissement{'s ont été réactivés' if n > 1 else ' a été réactivé'}.",
+            "Avertissements réinitialisés",
+            wx.OK | wx.ICON_INFORMATION, self,
+        )
 
     def _on_remove_cookie_site(self, _event) -> None:
         sel = self.lst_cookie_sites.GetSelection()
