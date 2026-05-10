@@ -15,7 +15,7 @@ class WarningDialog(wx.Dialog):
     def __init__(self, parent, message: str):
         super().__init__(
             parent,
-            title="Avertissement",
+            title=_("Avertissement"),
             style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER,
             size=(520, 300),
         )
@@ -29,7 +29,7 @@ class WarningDialog(wx.Dialog):
 
         lbl = wx.StaticText(
             self,
-            label="Le fichier a été téléchargé, mais une erreur s'est produite :",
+            label=_("Le fichier a été téléchargé, mais une erreur s'est produite :"),
         )
         sizer.Add(lbl, 0, wx.ALL, 12)
 
@@ -38,10 +38,10 @@ class WarningDialog(wx.Dialog):
         sizer.Add(lbl_msg, 1, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 12)
 
         btn_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        self.btn_close  = wx.Button(self, wx.ID_OK,   label="Fermer",
-                                    name="Fermer")
-        self.btn_report = wx.Button(self, wx.ID_HELP, label="Envoyer un rapport",
-                                    name="Envoyer un rapport")
+        self.btn_close  = wx.Button(self, wx.ID_OK,   label=_("Fermer"),
+                                    name=_("Fermer"))
+        self.btn_report = wx.Button(self, wx.ID_HELP, label=_("Envoyer un rapport"),
+                                    name=_("Envoyer un rapport"))
         btn_sizer.AddStretchSpacer()
         btn_sizer.Add(self.btn_close,  0, wx.RIGHT, 8)
         btn_sizer.Add(self.btn_report, 0, wx.RIGHT, 8)

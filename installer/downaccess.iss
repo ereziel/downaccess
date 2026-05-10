@@ -22,12 +22,31 @@ UninstallDisplayIcon={app}\DownAccess.exe
 ; SetupIconFile=..\assets\icon.ico
 
 [Languages]
-Name: "french"; MessagesFile: "compiler:Languages\French.isl"
+Name: "french";  MessagesFile: "compiler:Languages\French.isl"
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
+[CustomMessages]
+french.DesktopIcon=Créer un raccourci sur le Bureau
+english.DesktopIcon=Create a desktop shortcut
+
+french.StartMenuIcon=Créer un raccourci dans le menu Démarrer
+english.StartMenuIcon=Create a Start menu shortcut
+
+french.ShortcutsGroup=Raccourcis supplémentaires :
+english.ShortcutsGroup=Additional shortcuts:
+
+french.AppComment=Téléchargeur vidéo/audio accessible NVDA
+english.AppComment=NVDA-accessible video/audio downloader
+
+french.UninstallShortcut=Désinstaller DownAccess
+english.UninstallShortcut=Uninstall DownAccess
+
+french.LaunchApp=Lancer DownAccess
+english.LaunchApp=Launch DownAccess
+
 [Tasks]
-Name: "desktopicon"; Description: "Créer un raccourci sur le Bureau"; GroupDescription: "Raccourcis supplémentaires :"; Flags: unchecked
-Name: "startmenuicon"; Description: "Créer un raccourci dans le menu Démarrer"; GroupDescription: "Raccourcis supplémentaires :"; Flags: checkedonce
+Name: "desktopicon";   Description: "{cm:DesktopIcon}";   GroupDescription: "{cm:ShortcutsGroup}"; Flags: unchecked
+Name: "startmenuicon"; Description: "{cm:StartMenuIcon}"; GroupDescription: "{cm:ShortcutsGroup}"; Flags: checkedonce
 
 [Files]
 ; Application principale
@@ -35,12 +54,12 @@ Source: "..\dist\DownAccess\DownAccess.exe"; DestDir: "{app}"; Flags: ignorevers
 Source: "..\dist\DownAccess\_internal\*"; DestDir: "{app}\_internal"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
-Name: "{group}\DownAccess"; Filename: "{app}\DownAccess.exe"; Comment: "Téléchargeur vidéo/audio accessible NVDA"
-Name: "{group}\Désinstaller DownAccess"; Filename: "{uninstallexe}"
-Name: "{userdesktop}\DownAccess"; Filename: "{app}\DownAccess.exe"; Comment: "Téléchargeur vidéo/audio accessible NVDA"; Tasks: desktopicon
+Name: "{group}\DownAccess";                Filename: "{app}\DownAccess.exe"; Comment: "{cm:AppComment}"
+Name: "{group}\{cm:UninstallShortcut}";    Filename: "{uninstallexe}"
+Name: "{userdesktop}\DownAccess";          Filename: "{app}\DownAccess.exe"; Comment: "{cm:AppComment}"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\DownAccess.exe"; Description: "Lancer DownAccess"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\DownAccess.exe"; Description: "{cm:LaunchApp}"; Flags: nowait postinstall skipifsilent
 
 [UninstallDelete]
 ; Supprimer les fichiers créés au runtime (cache yt-dlp, logs…)

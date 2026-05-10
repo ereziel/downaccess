@@ -13,10 +13,10 @@ from app.core import settings as cfg
 class ConfirmDialog(wx.Dialog):
     """Dialogue OK/Annuler avec un wx.CheckBox « Ne plus afficher »."""
 
-    def __init__(self, parent, message: str, title: str = "Confirmation"):
+    def __init__(self, parent, message: str, title: str | None = None):
         super().__init__(
             parent,
-            title=title,
+            title=title or _("Confirmation"),
             style=wx.DEFAULT_DIALOG_STYLE,
         )
         self._build_ui(message)
@@ -34,14 +34,14 @@ class ConfirmDialog(wx.Dialog):
 
         self.chk_dont_ask = wx.CheckBox(
             self,
-            label="Ne plus afficher cet avertissement",
-            name="Ne plus afficher cet avertissement",
+            label=_("Ne plus afficher cet avertissement"),
+            name=_("Ne plus afficher cet avertissement"),
         )
         sizer.Add(self.chk_dont_ask, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 12)
 
         btn_sizer = wx.StdDialogButtonSizer()
-        self.btn_ok     = wx.Button(self, wx.ID_OK,     label="Continuer")
-        self.btn_cancel = wx.Button(self, wx.ID_CANCEL, label="Annuler")
+        self.btn_ok     = wx.Button(self, wx.ID_OK,     label=_("Continuer"))
+        self.btn_cancel = wx.Button(self, wx.ID_CANCEL, label=_("Annuler"))
         self.btn_ok.SetDefault()
         btn_sizer.AddButton(self.btn_ok)
         btn_sizer.AddButton(self.btn_cancel)
@@ -55,7 +55,7 @@ class ConfirmDialog(wx.Dialog):
 
 
 def confirm_with_memory(parent, settings: dict, key: str,
-                         message: str, title: str = "Confirmation") -> bool:
+                         message: str, title: str | None = None) -> bool:
     """Affiche le dialogue, sauf si la clé `key` est déjà dans
     settings["suppressed_warnings"]. Retourne True si l'utilisateur confirme
     (ou si l'avertissement est supprimé), False s'il annule.

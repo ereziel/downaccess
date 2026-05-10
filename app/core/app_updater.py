@@ -25,6 +25,7 @@ import urllib.error
 import json
 
 from app.version import __version__
+from app.core.i18n import _translate as _
 
 GITHUB_API   = "https://api.github.com/repos/math65/downaccess/releases/latest"
 ASSET_NAME   = "DownAccess-Setup.exe"
@@ -100,13 +101,19 @@ def check_for_update(on_done) -> None:
             tag     = data.get("tag_name", "")
             new_ver = tag.lstrip("v").strip()
             if not new_ver:
-                on_done("error", "Réponse GitHub invalide.", "")
+                on_done("error", _("Réponse GitHub invalide."), "")
                 return
 
             # Vérifier que l'asset existe bien dans cette release
             assets = [a["name"] for a in data.get("assets", [])]
             if ASSET_NAME not in assets:
-                on_done("error", f"Asset '{ASSET_NAME}' absent de la release {new_ver}.", "")
+                on_done(
+                    "error",
+                    _("Asset '{asset}' absent de la release {version}.").format(
+                        asset=ASSET_NAME, version=new_ver
+                    ),
+                    "",
+                )
                 return
 
             release_notes = data.get("body", "") or ""
@@ -117,7 +124,7 @@ def check_for_update(on_done) -> None:
                 on_done("up_to_date", __version__, "")
 
         except urllib.error.URLError:
-            on_done("error", "Impossible de contacter GitHub.", "")
+            on_done("error", _("Impossible de contacter GitHub."), "")
         except Exception as exc:
             on_done("error", str(exc), "")
 
@@ -176,7 +183,7 @@ def download_and_install(new_version: str, on_progress, on_error,
                 os.remove(tmp_path)
             except OSError:
                 pass
-            on_error(f"Téléchargement échoué : {exc}")
+            on_error(_("Téléchargement échoué : {error}").format(error=exc))
             return
 
         # Vérifier que le fichier n'est pas vide
@@ -186,7 +193,9 @@ def download_and_install(new_version: str, on_progress, on_error,
                 os.remove(tmp_path)
             except OSError:
                 pass
-            on_error(f"Fichier téléchargé trop petit ({size} octets) — corrompu ?")
+            on_error(
+                _("Fichier téléchargé trop petit ({size} octets) — corrompu ?").format(size=size)
+            )
             return
 
         # Vérification d'intégrité SHA-256 (toujours requise — refus si absent)
@@ -197,8 +206,10 @@ def download_and_install(new_version: str, on_progress, on_error,
             except OSError:
                 pass
             on_error(
-                "Impossible de récupérer la somme de contrôle (SHA-256) de la nouvelle version.\n"
-                "Mise à jour annulée par sécurité — réessayez plus tard."
+                _(
+                    "Impossible de récupérer la somme de contrôle (SHA-256) de la nouvelle version.\n"
+                    "Mise à jour annulée par sécurité — réessayez plus tard."
+                )
             )
             return
 
@@ -209,8 +220,10 @@ def download_and_install(new_version: str, on_progress, on_error,
             except OSError:
                 pass
             on_error(
-                "Vérification d'intégrité échouée : le fichier téléchargé ne correspond pas\n"
-                "à la somme de contrôle officielle. Mise à jour annulée par sécurité."
+                _(
+                    "Vérification d'intégrité échouée : le fichier téléchargé ne correspond pas\n"
+                    "à la somme de contrôle officielle. Mise à jour annulée par sécurité."
+                )
             )
             return
 
@@ -218,19 +231,19 @@ def download_and_install(new_version: str, on_progress, on_error,
         try:
             os.rename(tmp_path, dest_path)
         except OSError as exc:
-            on_error(f"Impossible de finaliser le fichier : {exc}")
+            on_error(_("Impossible de finaliser le fichier : {error}").format(error=exc))
             return
 
         # Lancer l'installeur
         try:
             proc = subprocess.Popen([dest_path])
         except Exception as exc:
-            on_error(f"Impossible de lancer l'installeur : {exc}")
+            on_error(_("Impossible de lancer l'installeur : {error}").format(error=exc))
             return
 
         # Vérifier que le processus a bien démarré
         if proc.poll() is not None:
-            on_error("L'installeur s'est terminé immédiatement — fichier corrompu ?")
+            on_error(_("L'installeur s'est terminé immédiatement — fichier corrompu ?"))
             return
 
         # Tout est bon → fermer l'app proprement

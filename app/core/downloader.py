@@ -12,6 +12,7 @@ from urllib.parse import urlparse
 import yt_dlp
 
 from app.core.ffmpeg_utils import get_ffmpeg_path
+from app.core.i18n import _translate as _
 
 _log = logging.getLogger("downaccess.downloader")
 
@@ -379,10 +380,10 @@ class Downloader:
             if pause_event:
                 while pause_event.is_set():
                     if stop_event.is_set():
-                        raise yt_dlp.utils.DownloadError("Annulé par l'utilisateur")
+                        raise yt_dlp.utils.DownloadError(_("Annulé par l'utilisateur"))
                     time.sleep(0.1)
             if stop_event.is_set():
-                raise yt_dlp.utils.DownloadError("Annulé par l'utilisateur")
+                raise yt_dlp.utils.DownloadError(_("Annulé par l'utilisateur"))
 
             status = d.get("status")
             if status == "downloading":
@@ -527,8 +528,9 @@ class _BurnSubtitlesPP(yt_dlp.postprocessor.PostProcessor):
                             capture_output=True, text=True)
             if result.returncode != 0:
                 self.report_warning(
-                    f"Incrustation des sous-titres échouée : "
-                    f"{(result.stderr or '')[:300]}"
+                    _("Incrustation des sous-titres échouée : {error}").format(
+                        error=(result.stderr or "")[:300]
+                    )
                 )
                 if out_path.exists():
                     try:
@@ -538,7 +540,7 @@ class _BurnSubtitlesPP(yt_dlp.postprocessor.PostProcessor):
                 return [], info
             os.replace(str(out_path), video_path)
         except Exception as exc:
-            self.report_warning(f"Erreur incrustation : {exc}")
+            self.report_warning(_("Erreur incrustation : {error}").format(error=exc))
             return [], info
         finally:
             if safe_sub.exists():

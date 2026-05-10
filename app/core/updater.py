@@ -7,6 +7,8 @@ import threading
 import urllib.request
 from pathlib import Path
 
+from app.core.i18n import _translate as _
+
 
 def get_ytdlp_dir() -> Path:
     appdata = os.environ.get("APPDATA", str(Path.home()))
@@ -77,7 +79,7 @@ def check_and_update(on_done=None) -> None:
                     on_done("up_to_date", current)
             else:
                 if on_done:
-                    on_done("error", "Impossible de vérifier la version (connexion indisponible).")
+                    on_done("error", _("Impossible de vérifier la version (connexion indisponible)."))
             return
 
         if not first_install and current == latest:
@@ -105,7 +107,7 @@ def check_and_update(on_done=None) -> None:
                 if on_done:
                     on_done(status, new_ver)
             else:
-                msg = result.stderr.strip() or "Erreur inconnue."
+                msg = result.stderr.strip() or _("Erreur inconnue.")
                 if on_done:
                     on_done("error", msg)
         except Exception as exc:

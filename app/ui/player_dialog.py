@@ -32,7 +32,7 @@ class PlayerDialog(wx.Dialog):
     def __init__(self, parent, web_url: str, title: str):
         super().__init__(
             parent,
-            title=f"Aperçu — {title}",
+            title=_("Aperçu — {title}").format(title=title),
             style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER,
             size=(560, 280),
         )
@@ -67,7 +67,7 @@ class PlayerDialog(wx.Dialog):
         self._lbl_title.SetFont(font)
         sizer.Add(self._lbl_title, 0, wx.ALL, 10)
 
-        self._lbl_status = wx.StaticText(self, label="Chargement…")
+        self._lbl_status = wx.StaticText(self, label=_("Chargement…"))
         sizer.Add(self._lbl_status, 0, wx.LEFT | wx.RIGHT, 10)
 
         # MediaCtrl (audio seul → 1×1 px, pas affiché). Backend WMP10 pour
@@ -77,24 +77,24 @@ class PlayerDialog(wx.Dialog):
                 self,
                 style=wx.SIMPLE_BORDER,
                 szBackend=wx.media.MEDIABACKEND_WMP10,
-                name="Lecteur audio",
+                name=_("Lecteur audio"),
             )
         except Exception:
             self._media = wx.media.MediaCtrl(
                 self,
                 style=wx.SIMPLE_BORDER,
-                name="Lecteur audio",
+                name=_("Lecteur audio"),
             )
         self._media.SetMinSize((1, 1))
         sizer.Add(self._media, 0, wx.LEFT | wx.RIGHT, 10)
 
         # Position
-        lbl_pos = wx.StaticText(self, label="Position :")
+        lbl_pos = wx.StaticText(self, label=_("Position :"))
         sizer.Add(lbl_pos, 0, wx.LEFT | wx.TOP, 10)
         self._slider_pos = wx.Slider(
             self, value=0, minValue=0, maxValue=1000,
             style=wx.SL_HORIZONTAL,
-            name="Position de lecture",
+            name=_("Position de lecture"),
         )
         self._slider_pos.Disable()
         sizer.Add(self._slider_pos, 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 10)
@@ -102,21 +102,21 @@ class PlayerDialog(wx.Dialog):
         sizer.Add(self._lbl_time, 0, wx.LEFT | wx.BOTTOM, 10)
 
         # Volume
-        lbl_vol = wx.StaticText(self, label="Volume :")
+        lbl_vol = wx.StaticText(self, label=_("Volume :"))
         sizer.Add(lbl_vol, 0, wx.LEFT, 10)
         self._slider_vol = wx.Slider(
             self, value=_DEFAULT_VOL, minValue=0, maxValue=100,
             style=wx.SL_HORIZONTAL,
-            name="Volume",
+            name=_("Volume"),
         )
         sizer.Add(self._slider_vol, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
 
         # Boutons
         btn_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        self._btn_back  = wx.Button(self, label="Reculer 10 s",  name="Reculer 10 secondes")
-        self._btn_play  = wx.Button(self, label="Lecture",       name="Lecture / Pause")
-        self._btn_fwd   = wx.Button(self, label="Avancer 10 s",  name="Avancer 10 secondes")
-        self._btn_close = wx.Button(self, wx.ID_CANCEL, label="Fermer")
+        self._btn_back  = wx.Button(self, label=_("Reculer 10 s"),  name=_("Reculer 10 secondes"))
+        self._btn_play  = wx.Button(self, label=_("Lecture"),       name=_("Lecture / Pause"))
+        self._btn_fwd   = wx.Button(self, label=_("Avancer 10 s"),  name=_("Avancer 10 secondes"))
+        self._btn_close = wx.Button(self, wx.ID_CANCEL, label=_("Fermer"))
         self._btn_back.Disable()
         self._btn_play.Disable()
         self._btn_fwd.Disable()
@@ -160,7 +160,7 @@ class PlayerDialog(wx.Dialog):
                 info = ydl.extract_info(self._web_url, download=False)
             stream_url = info.get("url")
             if not stream_url:
-                wx.CallAfter(self._fail, "Impossible d'extraire l'URL de streaming.")
+                wx.CallAfter(self._fail, _("Impossible d'extraire l'URL de streaming."))
                 return
             wx.CallAfter(self._load_stream, stream_url)
         except Exception as e:
@@ -169,14 +169,14 @@ class PlayerDialog(wx.Dialog):
     def _load_stream(self, stream_url: str) -> None:
         if self._closing:
             return
-        self._lbl_status.SetLabel("Préparation de la lecture…")
+        self._lbl_status.SetLabel(_("Préparation de la lecture…"))
         if not self._media.LoadURI(stream_url):
-            self._fail("Le lecteur média n'a pas pu charger ce flux.")
+            self._fail(_("Le lecteur média n'a pas pu charger ce flux."))
 
     def _fail(self, message: str) -> None:
         if self._closing:
             return
-        wx.MessageBox(message, "Erreur d'aperçu", wx.OK | wx.ICON_ERROR, self)
+        wx.MessageBox(message, _("Erreur d'aperçu"), wx.OK | wx.ICON_ERROR, self)
         self._on_close(None)
 
     # ------------------------------------------------------------------
@@ -193,26 +193,26 @@ class PlayerDialog(wx.Dialog):
         self._btn_play.Enable()
         self._btn_fwd.Enable()
         self._media.SetVolume(_DEFAULT_VOL / 100.0)
-        self._lbl_status.SetLabel("Lecture en cours.")
+        self._lbl_status.SetLabel(_("Lecture en cours."))
         self._update_time_label(0)
         if self._media.Play():
             self._is_playing = True
-            self._btn_play.SetLabel("Pause")
+            self._btn_play.SetLabel(_("Pause"))
             self._timer.Start(_TIMER_MS)
             self._btn_play.SetFocus()
-            speech.speak("Lecture.")
+            speech.speak(_("Lecture."))
         else:
-            self._fail("Le lecteur média n'a pas pu démarrer la lecture.")
+            self._fail(_("Le lecteur média n'a pas pu démarrer la lecture."))
 
     def _on_media_finished(self, _event) -> None:
         if self._closing:
             return
         self._is_playing = False
-        self._btn_play.SetLabel("Lecture")
+        self._btn_play.SetLabel(_("Lecture"))
         self._timer.Stop()
         self._slider_pos.SetValue(0)
         self._update_time_label(0)
-        speech.speak("Aperçu terminé.")
+        speech.speak(_("Aperçu terminé."))
 
     # ------------------------------------------------------------------
     # Actions
@@ -225,15 +225,15 @@ class PlayerDialog(wx.Dialog):
         if state == wx.media.MEDIASTATE_PLAYING:
             self._media.Pause()
             self._is_playing = False
-            self._btn_play.SetLabel("Lecture")
+            self._btn_play.SetLabel(_("Lecture"))
             self._timer.Stop()
-            speech.speak("Pause.")
+            speech.speak(_("Pause."))
         else:
             if self._media.Play():
                 self._is_playing = True
-                self._btn_play.SetLabel("Pause")
+                self._btn_play.SetLabel(_("Pause"))
                 self._timer.Start(_TIMER_MS)
-                speech.speak("Lecture.")
+                speech.speak(_("Lecture."))
 
     def _seek_relative(self, delta_ms: int) -> None:
         if self._duration_ms <= 0:
@@ -247,7 +247,7 @@ class PlayerDialog(wx.Dialog):
         new_vol = max(0, min(self._slider_vol.GetValue() + delta, 100))
         self._slider_vol.SetValue(new_vol)
         self._media.SetVolume(new_vol / 100.0)
-        speech.speak(f"Volume {new_vol} pour cent.")
+        speech.speak(_("Volume {volume} pour cent.").format(volume=new_vol))
 
     def _on_seek(self, _event) -> None:
         pos = self._slider_pos.GetValue()

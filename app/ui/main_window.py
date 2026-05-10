@@ -37,7 +37,13 @@ from app.version import __version__
 from app.core.downloader import DownloadInfo, DownloadProgress
 from app.core.queue_manager import QueueManager
 from app.ui.add_url_dialog import AddUrlDialog, FORMAT_MANUAL
-from app.ui.download_list import DownloadList
+from app.ui.download_list import (
+    DownloadList,
+    STATUS_PENDING,
+    STATUS_ACTIVE,
+    STATUS_PAUSED,
+    STATUS_DONE,
+)
 from app.ui.format_dialog import FormatDialog
 from app.ui.playlist_dialog import PlaylistDialog
 from app.ui.search_dialog import SearchDialog, SearchResultsDialog
@@ -561,7 +567,7 @@ class MainWindow(wx.Frame):
     def _all_done(self) -> bool:
         """Retourne True si aucun téléchargement n'est en cours ou en attente."""
         count = self.download_list.count()
-        done  = self.download_list.count_by_status("Terminé")
+        done  = self.download_list.count_by_status(STATUS_DONE)
         return count > 0 and done >= count
 
     def _open_download_folder(self) -> None:
@@ -1134,12 +1140,12 @@ class MainWindow(wx.Frame):
             return
         if self._queue.is_paused(dl_id):
             self._queue.resume(dl_id)
-            self.download_list.set_status(dl_id, "En cours")
+            self.download_list.set_status(dl_id, STATUS_ACTIVE)
             speech.speak(_("Téléchargement repris."))
             self.set_status(_("Téléchargement repris."))
         else:
             self._queue.pause(dl_id)
-            self.download_list.set_status(dl_id, "En pause")
+            self.download_list.set_status(dl_id, STATUS_PAUSED)
             speech.speak(_("Téléchargement mis en pause."))
             self.set_status(_("Téléchargement mis en pause."))
 
@@ -1149,7 +1155,7 @@ class MainWindow(wx.Frame):
             self.set_status(_("Aucun téléchargement sélectionné."))
             return
         status = self.download_list.get_selected_status()
-        if status in ("En cours", "En attente"):
+        if status in (STATUS_ACTIVE, STATUS_PENDING):
             if wx.MessageBox(
                 _("Annuler ce téléchargement ?"),
                 _("Confirmer l'annulation"),
@@ -1169,8 +1175,8 @@ class MainWindow(wx.Frame):
             self.set_status(_("La liste est déjà vide."))
             return
         # Vérifier s'il y a des téléchargements en cours
-        active = self.download_list.count_by_status("En cours")
-        pending = self.download_list.count_by_status("En attente")
+        active = self.download_list.count_by_status(STATUS_ACTIVE)
+        pending = self.download_list.count_by_status(STATUS_PENDING)
         if active + pending > 0:
             msg = _("Il y a {count} téléchargement(s) en cours ou en attente.\n\nTout annuler et vider la liste ?").format(
                 count=active + pending
@@ -1486,7 +1492,7 @@ class MainWindow(wx.Frame):
             _(
                 "DownAccess\n\n"
                 "Téléchargeur vidéo/audio Windows,\n"
-                "100 % accessible NVDA.\n\n"
+                "entièrement accessible avec NVDA.\n\n"
                 "Propulsé par yt-dlp et ffmpeg."
             ),
             _("À propos de DownAccess"),

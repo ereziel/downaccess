@@ -27,7 +27,7 @@ RATELIMIT_VALUES = [
 
 def _post_labels():
     return [
-        _("Aucun (fichier brut)"),
+        _("Aucun (fichier d'origine)"),
         _("Vidéo MP4 (H.264)"),
         _("Audio MP3"),
         _("Audio M4A"),

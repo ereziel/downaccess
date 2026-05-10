@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Callable
 
 from app.version import __version__
+from app.core.i18n import _translate as _
 
 REPORT_URL  = "https://mathieumartin.ovh/api/downaccess-report"
 CONTACT_URL = "https://mathieumartin.ovh/api/downaccess-contact"
@@ -113,16 +114,16 @@ def send_report(report: dict, on_done: Callable[[bool, str], None]) -> None:
             with urllib.request.urlopen(req, timeout=30) as resp:
                 body = json.loads(resp.read())
             if body.get("ok"):
-                on_done(True, "Rapport envoyé avec succès.")
+                on_done(True, _("Rapport envoyé avec succès."))
             else:
-                on_done(False, body.get("message", "Erreur inconnue."))
+                on_done(False, body.get("message", _("Erreur inconnue.")))
 
         except urllib.error.HTTPError as exc:
             try:
                 body = json.loads(exc.read())
-                on_done(False, body.get("message", f"Erreur HTTP {exc.code}."))
+                on_done(False, body.get("message", _("Erreur HTTP {code}.").format(code=exc.code)))
             except Exception:
-                on_done(False, f"Erreur HTTP {exc.code}.")
+                on_done(False, _("Erreur HTTP {code}.").format(code=exc.code))
         except Exception as exc:
             on_done(False, str(exc))
 
@@ -155,15 +156,15 @@ def send_contact(
             with urllib.request.urlopen(req, timeout=15) as resp:
                 body = json.loads(resp.read())
             if body.get("ok"):
-                on_done(True, "Message envoyé. Merci pour votre retour !")
+                on_done(True, _("Message envoyé. Merci pour votre retour !"))
             else:
-                on_done(False, body.get("message", "Erreur inconnue."))
+                on_done(False, body.get("message", _("Erreur inconnue.")))
         except urllib.error.HTTPError as exc:
             try:
                 body = json.loads(exc.read())
-                on_done(False, body.get("message", f"Erreur HTTP {exc.code}."))
+                on_done(False, body.get("message", _("Erreur HTTP {code}.").format(code=exc.code)))
             except Exception:
-                on_done(False, f"Erreur HTTP {exc.code}.")
+                on_done(False, _("Erreur HTTP {code}.").format(code=exc.code))
         except Exception as exc:
             on_done(False, str(exc))
 

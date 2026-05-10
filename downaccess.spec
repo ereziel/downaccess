@@ -16,13 +16,20 @@ if not FFMPEG_EXE.exists():
         "Lance d'abord : python scripts/update_ffmpeg.py"
     )
 
+# Catalogues de traduction (gettext .po pour chaque langue supportee).
+# Le runtime app/core/i18n.py les charge via polib depuis _internal/locales/.
+LOCALE_DATAS = []
+for po_path in Path('locales').rglob('*.po'):
+    # Ex : locales/en/LC_MESSAGES/base.po -> locales/en/LC_MESSAGES
+    LOCALE_DATAS.append((str(po_path), str(po_path.parent)))
+
 a = Analysis(
     ['main.py'],
     pathex=['.'],
     binaries=[
         (str(FFMPEG_EXE), '.'),   # → _internal/ffmpeg.exe dans le bundle
     ],
-    datas=[],
+    datas=LOCALE_DATAS,
     hiddenimports=[
         # wxPython
         'wx',
@@ -40,6 +47,8 @@ a = Analysis(
         'yt_dlp.extractor',
         'yt_dlp.extractor._extractors',
         'yt_dlp.postprocessor',
+        # i18n (lecture des .po au runtime)
+        'polib',
         # Divers
         'certifi',
         'urllib3',

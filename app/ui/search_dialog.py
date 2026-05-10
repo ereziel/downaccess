@@ -30,11 +30,11 @@ class SearchDialog(wx.Dialog):
     """Saisie de la requête de recherche."""
 
     def __init__(self, parent):
-        super().__init__(parent, title="Rechercher des médias", style=wx.DEFAULT_DIALOG_STYLE)
+        super().__init__(parent, title=_("Rechercher des médias"), style=wx.DEFAULT_DIALOG_STYLE)
         self._build_ui()
         self.txt_query.SetFocus()
         speech.speak(
-            "Recherche. Saisissez votre requête, choisissez le site et le nombre de résultats."
+            _("Fenêtre de recherche. Saisissez votre requête, choisissez le site et le nombre de résultats.")
         )
 
     def _build_ui(self) -> None:
@@ -43,28 +43,28 @@ class SearchDialog(wx.Dialog):
         grid.AddGrowableCol(1)
 
         # Requête
-        lbl_q = wx.StaticText(self, label="Recherche :")
-        self.txt_query = wx.TextCtrl(self, name="Requête de recherche", style=wx.TE_PROCESS_ENTER)
+        lbl_q = wx.StaticText(self, label=_("Recherche :"))
+        self.txt_query = wx.TextCtrl(self, name=_("Requête de recherche"), style=wx.TE_PROCESS_ENTER)
         self.txt_query.Bind(wx.EVT_TEXT_ENTER, self._on_ok)
         grid.Add(lbl_q, 0, wx.ALIGN_CENTER_VERTICAL)
         grid.Add(self.txt_query, 1, wx.EXPAND)
 
         # Site
-        lbl_site = wx.StaticText(self, label="Site :")
+        lbl_site = wx.StaticText(self, label=_("Site :"))
         self.choice_site = wx.Choice(
             self,
             choices=[s[0] for s in _SITES],
-            name="Site de recherche",
+            name=_("Site de recherche"),
         )
         self.choice_site.SetSelection(0)
         grid.Add(lbl_site, 0, wx.ALIGN_CENTER_VERTICAL)
         grid.Add(self.choice_site, 1, wx.EXPAND)
 
         # Nombre de résultats
-        lbl_n = wx.StaticText(self, label="Résultats :")
+        lbl_n = wx.StaticText(self, label=_("Résultats :"))
         self.spin_n = wx.SpinCtrl(
             self, min=1, max=25, initial=8,
-            name="Nombre de résultats",
+            name=_("Nombre de résultats"),
         )
         grid.Add(lbl_n, 0, wx.ALIGN_CENTER_VERTICAL)
         grid.Add(self.spin_n, 0)
@@ -78,7 +78,7 @@ class SearchDialog(wx.Dialog):
 
     def _on_ok(self, _event) -> None:
         if not self.txt_query.GetValue().strip():
-            speech.speak("Veuillez saisir une requête.")
+            speech.speak(_("Veuillez saisir une requête."))
             return
         self.EndModal(wx.ID_OK)
 
@@ -95,6 +95,16 @@ class SearchDialog(wx.Dialog):
         return self.spin_n.GetValue()
 
 
+# Etats de coche affiches dans la colonne 0 — internes ET visibles.
+# Stockes ici pour referer leur valeur courante apres traduction.
+def _checked_label() -> str:
+    return _("Coché")
+
+
+def _unchecked_label() -> str:
+    return _("Non coché")
+
+
 class SearchResultsDialog(wx.Dialog):
     """
     Affiche les résultats de recherche dans une ListCtrl avec cases à cocher.
@@ -105,7 +115,7 @@ class SearchResultsDialog(wx.Dialog):
                  settings: dict | None = None):
         super().__init__(
             parent,
-            title=f"Résultats — {site_label}",
+            title=_("Résultats — {site}").format(site=site_label),
             style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER,
             size=(820, 480),
         )
@@ -117,41 +127,48 @@ class SearchResultsDialog(wx.Dialog):
         self.Bind(wx.EVT_WINDOW_DESTROY, self._on_destroy)
         self.lst.SetFocus()
         n = len(results)
+        if n > 1:
+            count_msg = _("{count} résultats trouvés.").format(count=n)
+        else:
+            count_msg = _("{count} résultat trouvé.").format(count=n)
         speech.speak(
-            f"{n} résultat{'s' if n > 1 else ''} trouvé{'s' if n > 1 else ''}. "
-            "Utilisez les flèches pour naviguer, Espace pour cocher, Entrée pour l'aperçu."
+            count_msg + " "
+            + _("Utilisez les flèches pour naviguer, Espace pour cocher, Entrée pour l'aperçu.")
         )
 
     def _build_ui(self, site_label: str) -> None:
         sizer = wx.BoxSizer(wx.VERTICAL)
 
-        lbl = wx.StaticText(self, label=f"Résultats de recherche — {site_label} :")
+        lbl = wx.StaticText(
+            self,
+            label=_("Résultats de recherche — {site} :").format(site=site_label),
+        )
         sizer.Add(lbl, 0, wx.LEFT | wx.TOP | wx.RIGHT, 10)
 
         self.lst = wx.ListCtrl(
             self,
             style=wx.LC_REPORT | wx.LC_HRULES | wx.BORDER_SUNKEN,
-            name="Liste des résultats",
+            name=_("Liste des résultats"),
         )
         self.lst.EnableCheckBoxes()
-        self.lst.InsertColumn(0, "Sélection", width=100)
-        self.lst.InsertColumn(1, "Titre",     width=360)
-        self.lst.InsertColumn(2, "Durée",     width=80)
-        self.lst.InsertColumn(3, "Auteur",    width=180)
-        self.lst.InsertColumn(4, "Type",      width=80)
+        self.lst.InsertColumn(0, _("Sélection"), width=100)
+        self.lst.InsertColumn(1, _("Titre"),     width=360)
+        self.lst.InsertColumn(2, _("Durée"),     width=80)
+        self.lst.InsertColumn(3, _("Auteur"),    width=180)
+        self.lst.InsertColumn(4, _("Type"),      width=80)
         sizer.Add(self.lst, 1, wx.EXPAND | wx.ALL, 8)
 
         # Compteur de sélection
-        self.lbl_count = wx.StaticText(self, label="0 sélectionné(s)")
+        self.lbl_count = wx.StaticText(self, label=_("0 sélectionné(s)"))
         sizer.Add(self.lbl_count, 0, wx.LEFT | wx.BOTTOM, 10)
 
         # Format
         fmt_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        lbl_fmt = wx.StaticText(self, label="Format :")
+        lbl_fmt = wx.StaticText(self, label=_("Format :"))
         self.choice_fmt = wx.Choice(
             self,
-            choices=["Auto", "MP4", "MP3", "M4A"],
-            name="Format de téléchargement",
+            choices=[_("Auto"), "MP4", "MP3", "M4A"],
+            name=_("Format de téléchargement"),
         )
         self.choice_fmt.SetSelection(0)
         fmt_sizer.Add(lbl_fmt, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 6)
@@ -160,11 +177,11 @@ class SearchResultsDialog(wx.Dialog):
 
         # Boutons
         btn_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        self.btn_preview = wx.Button(self, label="Aperçu", name="Aperçu")
-        self.btn_all   = wx.Button(self, label="Tout sélectionner",   name="Tout sélectionner")
-        self.btn_none  = wx.Button(self, label="Tout désélectionner", name="Tout désélectionner")
-        self.btn_dl    = wx.Button(self, wx.ID_OK, label="Télécharger la sélection")
-        self.btn_close = wx.Button(self, wx.ID_CANCEL, label="Fermer")
+        self.btn_preview = wx.Button(self, label=_("Aperçu"), name=_("Aperçu"))
+        self.btn_all   = wx.Button(self, label=_("Tout sélectionner"),   name=_("Tout sélectionner"))
+        self.btn_none  = wx.Button(self, label=_("Tout désélectionner"), name=_("Tout désélectionner"))
+        self.btn_dl    = wx.Button(self, wx.ID_OK, label=_("Télécharger la sélection"))
+        self.btn_close = wx.Button(self, wx.ID_CANCEL, label=_("Fermer"))
         btn_sizer.Add(self.btn_preview, 0, wx.RIGHT, 6)
         btn_sizer.Add(self.btn_all,   0, wx.RIGHT, 6)
         btn_sizer.Add(self.btn_none,  0, wx.RIGHT, 6)
@@ -193,7 +210,7 @@ class SearchResultsDialog(wx.Dialog):
             uploader = entry.get("uploader") or entry.get("channel") or "—"
             entry_type = entry.get("_dl_type") or "video"
             idx = self.lst.GetItemCount()
-            self.lst.InsertItem(idx, "Non coché")
+            self.lst.InsertItem(idx, _unchecked_label())
             self.lst.SetItem(idx, 1, title)
             self.lst.SetItem(idx, 2, duration)
             self.lst.SetItem(idx, 3, uploader)
@@ -201,31 +218,41 @@ class SearchResultsDialog(wx.Dialog):
 
     def _on_check(self, event) -> None:
         idx = event.GetIndex() if event else -1
+        checked = False
         if idx >= 0:
             checked = self.lst.IsItemChecked(idx)
-            self.lst.SetItem(idx, 0, "Coché" if checked else "Non coché")
+            self.lst.SetItem(idx, 0, _checked_label() if checked else _unchecked_label())
         n = sum(
             1 for i in range(self.lst.GetItemCount())
             if self.lst.IsItemChecked(i)
         )
-        self.lbl_count.SetLabel(f"{n} sélectionné(s)")
+        if n > 1:
+            self.lbl_count.SetLabel(_("{count} sélectionnés").format(count=n))
+            count_msg = _("{count} sélectionnés.").format(count=n)
+        else:
+            self.lbl_count.SetLabel(_("{count} sélectionné").format(count=n))
+            count_msg = _("{count} sélectionné.").format(count=n)
         if idx >= 0:
             title = self.lst.GetItemText(idx, 1)
-            state = "coché" if checked else "non coché"
-            speech.speak(f"{state}. {title}. {n} sélectionné{'s' if n > 1 else ''}.")
+            state = _("coché") if checked else _("non coché")
+            speech.speak(
+                _("{state}. {title}. {count_msg}").format(
+                    state=state, title=title, count_msg=count_msg
+                )
+            )
         else:
-            speech.speak(f"{n} sélectionné{'s' if n > 1 else ''}.")
+            speech.speak(count_msg)
 
     def _on_select_all(self, _event) -> None:
         for i in range(self.lst.GetItemCount()):
             self.lst.CheckItem(i, True)
-            self.lst.SetItem(i, 0, "Coché")
+            self.lst.SetItem(i, 0, _checked_label())
         self._on_check(None)
 
     def _on_select_none(self, _event) -> None:
         for i in range(self.lst.GetItemCount()):
             self.lst.CheckItem(i, False)
-            self.lst.SetItem(i, 0, "Non coché")
+            self.lst.SetItem(i, 0, _unchecked_label())
         self._on_check(None)
 
     # -- Clavier liste --------------------------------------------------
@@ -243,17 +270,15 @@ class SearchResultsDialog(wx.Dialog):
         """Ouvre la fenêtre player pour le résultat ayant le focus."""
         idx = self.lst.GetFocusedItem()
         if idx < 0:
-            speech.speak("Sélectionnez un résultat.")
+            speech.speak(_("Sélectionnez un résultat."))
             return
         entry = self._results[idx]
         entry_type = entry.get("_dl_type") or "video"
         if entry_type in ("channel", "playlist"):
-            label = "une chaîne" if entry_type == "channel" else "une playlist"
+            label = _("une chaîne") if entry_type == "channel" else _("une playlist")
             wx.MessageBox(
-                f"L'aperçu n'est pas disponible pour {label}.\n\n"
-                "Cochez l'élément et utilisez « Télécharger la sélection » "
-                "pour récupérer son contenu.",
-                "Aperçu indisponible",
+                _("L'aperçu n'est pas disponible pour {label}.\n\nCochez l'élément et utilisez « Télécharger la sélection » pour récupérer son contenu.").format(label=label),
+                _("Aperçu indisponible"),
                 wx.OK | wx.ICON_INFORMATION,
                 self,
             )
@@ -292,9 +317,9 @@ class SearchResultsDialog(wx.Dialog):
     def _on_download(self, _event) -> None:
         selected = self.get_selected_entries()
         if not selected:
-            msg = "Veuillez cocher au moins un résultat à télécharger (touche Espace)."
+            msg = _("Veuillez cocher au moins un résultat à télécharger (touche Espace).")
             speech.speak(msg)
-            wx.MessageBox(msg, "Aucune sélection", wx.OK | wx.ICON_INFORMATION, self)
+            wx.MessageBox(msg, _("Aucune sélection"), wx.OK | wx.ICON_INFORMATION, self)
             return
 
         bulk_types = {e.get("_dl_type") for e in selected
@@ -303,16 +328,14 @@ class SearchResultsDialog(wx.Dialog):
             from app.ui.confirm_dialog import confirm_with_memory
             labels = []
             if "channel" in bulk_types:
-                labels.append("une chaîne (potentiellement des centaines de vidéos)")
+                labels.append(_("une chaîne (potentiellement des centaines de vidéos)"))
             if "playlist" in bulk_types:
-                labels.append("une playlist complète")
-            joined = " et ".join(labels)
+                labels.append(_("une playlist complète"))
+            joined = _(" et ").join(labels)
             if not confirm_with_memory(
                 self, self._settings, "search_bulk_download",
-                f"Votre sélection contient {joined}.\n\n"
-                "Le téléchargement peut prendre beaucoup de temps "
-                "et d'espace disque. Continuer ?",
-                "Téléchargement volumineux",
+                _("Votre sélection contient {labels}.\n\nLe téléchargement peut prendre beaucoup de temps et d'espace disque. Continuer ?").format(labels=joined),
+                _("Téléchargement volumineux"),
             ):
                 return
 

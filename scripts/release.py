@@ -4,8 +4,9 @@ release.py — Bump version, build, génère l'installeur et publie la release G
 Usage :
     python scripts/release.py 0.1.13
 
-Les release notes sont prises depuis RELEASE_NOTES.md si présent, sinon
-générées depuis git log (commits depuis le dernier tag).
+Les release notes sont prises depuis RELEASE_NOTES.md (FR) et
+RELEASE_NOTES.en.md (EN) si presents, concatenes dans le body de la release
+GitHub. Sinon, generes depuis git log (commits depuis le dernier tag).
 
 Prérequis :
   - venv activé (pour PyInstaller via build.py)
@@ -64,13 +65,32 @@ def _generate_notes(tag: str) -> str:
     """
     Genere les release notes.
     Priorite :
-      1. RELEASE_NOTES.md a la racine (redige manuellement avant la release)
+      1. RELEASE_NOTES.md (FR) + RELEASE_NOTES.en.md (EN) a la racine,
+         concatenes avec separateur de langue
       2. Auto-genere depuis git log (commits depuis le dernier tag)
     """
-    rn_file = ROOT / "RELEASE_NOTES.md"
-    if rn_file.exists():
-        notes = rn_file.read_text(encoding="utf-8").strip()
-        print(f"  (source : RELEASE_NOTES.md)")
+    rn_fr = ROOT / "RELEASE_NOTES.md"
+    rn_en = ROOT / "RELEASE_NOTES.en.md"
+
+    if rn_fr.exists() or rn_en.exists():
+        # Avertir si l'un des deux est en retard sur l'autre
+        if rn_fr.exists() and rn_en.exists():
+            mt_diff = abs(rn_fr.stat().st_mtime - rn_en.stat().st_mtime)
+            if mt_diff > 60 * 60:  # plus d'une heure d'ecart
+                older = "RELEASE_NOTES.md" if rn_fr.stat().st_mtime < rn_en.stat().st_mtime else "RELEASE_NOTES.en.md"
+                print(f"  WARN {older} semble plus ancien que sa contrepartie — pense a le mettre a jour.")
+        elif rn_fr.exists():
+            print("  WARN RELEASE_NOTES.en.md absent — la release sera FR uniquement.")
+        else:
+            print("  WARN RELEASE_NOTES.md absent — la release sera EN uniquement.")
+
+        parts = []
+        if rn_en.exists():
+            parts.append(rn_en.read_text(encoding="utf-8").strip())
+        if rn_fr.exists():
+            parts.append(rn_fr.read_text(encoding="utf-8").strip())
+        notes = "\n\n---\n\n".join(parts)
+        print(f"  (source : RELEASE_NOTES.md + RELEASE_NOTES.en.md)")
         return notes
 
     # Auto-generation depuis git log

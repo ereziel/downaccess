@@ -190,11 +190,11 @@ def _url_type(url: str) -> str:
         return "DASH"
     for ext in (".mp4", ".m4v", ".webm", ".mkv", ".flv", ".mov"):
         if low.endswith(ext):
-            return f"Vidéo {ext[1:].upper()}"
+            return _("Vidéo {ext}").format(ext=ext[1:].upper())
     for ext in (".mp3", ".aac", ".ogg", ".wav", ".opus"):
         if low.endswith(ext):
-            return f"Audio {ext[1:].upper()}"
-    return "Média"
+            return _("Audio {ext}").format(ext=ext[1:].upper())
+    return _("Média")
 
 
 class UGEDialog(wx.Frame):
@@ -208,7 +208,7 @@ class UGEDialog(wx.Frame):
     def __init__(self, parent, on_add_url):
         super().__init__(
             parent,
-            title="Extraction guidée — DownAccess",
+            title=_("Extraction guidée — DownAccess"),
             style=wx.DEFAULT_FRAME_STYLE,
         )
         self._on_add_url = on_add_url
@@ -226,11 +226,13 @@ class UGEDialog(wx.Frame):
         self.Centre()
 
         speech.speak(
-            "Extraction guidée ouverte. "
-            "Saisissez une URL et appuyez sur Entrée pour naviguer. "
-            "Lancez la vidéo dans le navigateur Chrome qui s'est ouvert. "
-            "Les médias détectés apparaîtront dans cette fenêtre. "
-            "Note : les contenus protégés par DRM (Netflix, Disney+, Prime Video) ne sont pas pris en charge.",
+            _(
+                "Extraction guidée ouverte. "
+                "Saisissez une URL et appuyez sur Entrée pour naviguer. "
+                "Lancez la vidéo dans le navigateur Chrome qui s'est ouvert. "
+                "Les médias détectés apparaîtront dans cette fenêtre. "
+                "Note : les contenus protégés par DRM (Netflix, Disney+, Prime Video) ne sont pas pris en charge."
+            ),
         )
 
     # ------------------------------------------------------------------
@@ -243,14 +245,14 @@ class UGEDialog(wx.Frame):
 
         # Barre d'adresse
         addr_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        lbl_addr = wx.StaticText(panel, label="Adresse :")
+        lbl_addr = wx.StaticText(panel, label=_("Adresse :"))
         self.txt_url = wx.TextCtrl(
             panel,
-            name="Adresse URL",
+            name=_("Adresse URL"),
             style=wx.TE_PROCESS_ENTER,
         )
         self.txt_url.SetHint("https://www.example.com/video")
-        self.btn_go = wx.Button(panel, label="Aller", name="Aller à l'adresse")
+        self.btn_go = wx.Button(panel, label=_("Aller"), name=_("Aller à l'adresse"))
 
         addr_sizer.Add(lbl_addr,     0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 6)
         addr_sizer.Add(self.txt_url, 1, wx.EXPAND | wx.RIGHT, 6)
@@ -260,30 +262,30 @@ class UGEDialog(wx.Frame):
         # Statut
         self.lbl_status = wx.StaticText(
             panel,
-            label="Entrez une URL pour ouvrir le navigateur.",
+            label=_("Entrez une URL pour ouvrir le navigateur."),
         )
         sizer.Add(self.lbl_status, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 8)
 
         # Interception des tokens
         self.chk_intercept = wx.CheckBox(
             panel,
-            label="Intercepter les requêtes (sites avec tokens expirants)",
-            name="Activer l'interception des requêtes média",
+            label=_("Intercepter les requêtes (sites avec tokens expirants)"),
+            name=_("Activer l'interception des requêtes média"),
         )
         self.chk_intercept.SetValue(False)
         sizer.Add(self.chk_intercept, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 8)
 
         # Liste des médias détectés
-        lbl_detected = wx.StaticText(panel, label="Médias détectés :")
+        lbl_detected = wx.StaticText(panel, label=_("Médias détectés :"))
         self.lst_media = wx.ListCtrl(
             panel,
             style=wx.LC_REPORT | wx.LC_SINGLE_SEL | wx.LC_HRULES | wx.BORDER_SUNKEN,
-            name="Liste des médias détectés",
+            name=_("Liste des médias détectés"),
         )
-        self.lst_media.InsertColumn(0, "Type", width=90)
-        self.lst_media.InsertColumn(1, "URL", width=360)
+        self.lst_media.InsertColumn(0, _("Type"), width=90)
+        self.lst_media.InsertColumn(1, _("URL"), width=360)
 
-        self.lbl_count = wx.StaticText(panel, label="0 média(s) détecté(s)")
+        self.lbl_count = wx.StaticText(panel, label=_("0 média(s) détecté(s)"))
 
         sizer.Add(lbl_detected,   0, wx.LEFT | wx.RIGHT | wx.TOP, 8)
         sizer.Add(self.lst_media, 1, wx.EXPAND | wx.ALL, 6)
@@ -292,15 +294,15 @@ class UGEDialog(wx.Frame):
         # Boutons
         btn_sizer = wx.BoxSizer(wx.HORIZONTAL)
         self.btn_clear = wx.Button(
-            panel, label="Effacer",
-            name="Effacer la liste des médias détectés",
+            panel, label=_("Effacer"),
+            name=_("Effacer la liste des médias détectés"),
         )
         self.btn_add = wx.Button(
-            panel, label="Ajouter à la file",
-            name="Ajouter le média sélectionné à la file de téléchargement",
+            panel, label=_("Ajouter à la file"),
+            name=_("Ajouter le média sélectionné à la file de téléchargement"),
         )
         self.btn_add.Disable()
-        self.btn_close = wx.Button(panel, wx.ID_CLOSE, label="Fermer")
+        self.btn_close = wx.Button(panel, wx.ID_CLOSE, label=_("Fermer"))
 
         btn_sizer.Add(self.btn_clear, 0, wx.RIGHT, 6)
         btn_sizer.Add(self.btn_add,   1, wx.RIGHT, 6)
@@ -337,7 +339,7 @@ class UGEDialog(wx.Frame):
         if self._page is None:
             self._intercept_enabled = enabled
             if enabled:
-                speech.speak("L'interception sera activée au lancement du navigateur.")
+                speech.speak(_("L'interception sera activée au lancement du navigateur."))
             return
         if enabled:
             self._enable_fetch_intercept()
@@ -356,7 +358,7 @@ class UGEDialog(wx.Frame):
             )
             self._intercept_enabled = True
             self._saved_urls: set[str] = set()  # déduplication
-            speech.speak("Interception des requêtes média activée.")
+            speech.speak(_("Interception des requêtes média activée."))
         except Exception:
             self.chk_intercept.SetValue(False)
             self._intercept_enabled = False
@@ -366,7 +368,7 @@ class UGEDialog(wx.Frame):
             self._page.driver.set_callback("Fetch.requestPaused", None)
             self._page.run_cdp("Fetch.disable")
             self._intercept_enabled = False
-            speech.speak("Interception des requêtes média désactivée.")
+            speech.speak(_("Interception des requêtes média désactivée."))
         except Exception:
             pass  # Normal si Chrome déjà fermé
 
@@ -440,8 +442,8 @@ class UGEDialog(wx.Frame):
             except Exception:
                 pass
             wx.CallAfter(self._add_intercepted_url, url, "", "")
-            wx.CallAfter(self._set_status, "Téléchargement en cours…")
-            wx.CallAfter(speech.speak, "Téléchargement en cours…", interrupt=False)
+            wx.CallAfter(self._set_status, _("Téléchargement en cours…"))
+            wx.CallAfter(speech.speak, _("Téléchargement en cours…"), interrupt=False)
             t = threading.Thread(
                 target=self._save_intercepted_media,
                 args=(url, body_data, page_title),
@@ -460,11 +462,12 @@ class UGEDialog(wx.Frame):
         self._intercepted_headers[url] = (referer, cookies)
         media_type = _url_type(url)
         idx = self.lst_media.GetItemCount()
+        # Le prefixe "[I] " est un marqueur interne (intercepte) detecte au clic
         self.lst_media.InsertItem(idx, f"[I] {media_type}")
         self.lst_media.SetItem(idx, 1, url)
         n = self.lst_media.GetItemCount()
-        self.lbl_count.SetLabel(f"{n} média(s) détecté(s)")
-        speech.speak("Média intercepté.", interrupt=False)
+        self.lbl_count.SetLabel(_("{count} média(s) détecté(s)").format(count=n))
+        speech.speak(_("Média intercepté."), interrupt=False)
 
     def _save_intercepted_media(self, url: str, data: bytes,
                                 page_title: str = "") -> None:
@@ -515,8 +518,8 @@ class UGEDialog(wx.Frame):
             _log.error("Erreur sauvegarde média: %s", exc)
             wx.CallAfter(
                 wx.MessageBox,
-                f"Erreur lors de la sauvegarde :\n{exc}",
-                "Erreur — DownAccess",
+                _("Erreur lors de la sauvegarde :\n{error}").format(error=exc),
+                _("Erreur — DownAccess"),
                 wx.OK | wx.ICON_ERROR,
                 self,
             )
@@ -524,14 +527,22 @@ class UGEDialog(wx.Frame):
     def _on_media_saved(self, filepath: str, filename: str,
                         size_mb: float) -> None:
         """Callback UI après sauvegarde réussie."""
-        self._set_status(f"Téléchargement terminé : {filename} ({size_mb:.1f} Mo)")
+        self._set_status(
+            _("Téléchargement terminé : {filename} ({size_mb:.1f} Mo)").format(
+                filename=filename, size_mb=size_mb
+            )
+        )
         speech.speak(
-            f"Média sauvegardé : {filename} ({size_mb:.1f} Mo)",
+            _("Média sauvegardé : {filename} ({size_mb:.1f} Mo)").format(
+                filename=filename, size_mb=size_mb
+            ),
             interrupt=False,
         )
         wx.MessageBox(
-            f"Fichier sauvegardé :\n{filepath}\n\nTaille : {size_mb:.1f} Mo",
-            "Média intercepté — DownAccess",
+            _("Fichier sauvegardé :\n{filepath}\n\nTaille : {size_mb:.1f} Mo").format(
+                filepath=filepath, size_mb=size_mb
+            ),
+            _("Média intercepté — DownAccess"),
             wx.OK | wx.ICON_INFORMATION,
             self,
         )
@@ -552,9 +563,11 @@ class UGEDialog(wx.Frame):
         browser_path = find_browser()
         if not browser_path:
             wx.MessageBox(
-                "Aucun navigateur compatible trouvé.\n\n"
-                "Installez Google Chrome, Microsoft Edge ou Brave.",
-                "Erreur — Extraction guidée",
+                _(
+                    "Aucun navigateur compatible trouvé.\n\n"
+                    "Installez Google Chrome, Microsoft Edge ou Brave."
+                ),
+                _("Erreur — Extraction guidée"),
                 wx.OK | wx.ICON_ERROR,
                 self,
             )
@@ -575,8 +588,8 @@ class UGEDialog(wx.Frame):
         except Exception as exc:
             _log.error("Impossible d'ouvrir le navigateur : %s", exc)
             wx.MessageBox(
-                f"Impossible d'ouvrir le navigateur.\n\n{exc}",
-                "Erreur — Extraction guidée",
+                _("Impossible d'ouvrir le navigateur.\n\n{error}").format(error=exc),
+                _("Erreur — Extraction guidée"),
                 wx.OK | wx.ICON_ERROR,
                 self,
             )
@@ -593,7 +606,7 @@ class UGEDialog(wx.Frame):
         if not self._ensure_browser():
             return
 
-        self.lbl_status.SetLabel("Chargement…")
+        self.lbl_status.SetLabel(_("Chargement…"))
 
         def navigate():
             try:
@@ -607,7 +620,7 @@ class UGEDialog(wx.Frame):
                 _log.error("Erreur navigation : %s", exc)
                 wx.CallAfter(
                     self.lbl_status.SetLabel,
-                    f"Erreur : {exc}",
+                    _("Erreur : {error}").format(error=exc),
                 )
 
         threading.Thread(target=navigate, daemon=True).start()
@@ -615,8 +628,9 @@ class UGEDialog(wx.Frame):
     def _on_page_loaded(self, url: str, title: str) -> None:
         self.txt_url.SetValue(url)
         self.lbl_status.SetLabel(
-            f"Page chargée : {title}\n"
-            "Lancez la vidéo dans Chrome — les médias seront détectés automatiquement."
+            _("Page chargée : {title}\nLancez la vidéo dans le navigateur — les médias seront détectés automatiquement.").format(
+                title=title
+            )
         )
         if not self._poll_timer.IsRunning():
             self._poll_timer.Start(1000)
@@ -673,11 +687,12 @@ class UGEDialog(wx.Frame):
 
         if added:
             n = self.lst_media.GetItemCount()
-            self.lbl_count.SetLabel(f"{n} média(s) détecté(s)")
-            speech.speak(
-                f"{added} média{'s' if added > 1 else ''} détecté{'s' if added > 1 else ''}.",
-                interrupt=False,
-            )
+            self.lbl_count.SetLabel(_("{count} média(s) détecté(s)").format(count=n))
+            if added > 1:
+                msg = _("{count} médias détectés.").format(count=added)
+            else:
+                msg = _("{count} média détecté.").format(count=added)
+            speech.speak(msg, interrupt=False)
 
     # ------------------------------------------------------------------
     # Gestion de la liste des médias
@@ -703,9 +718,9 @@ class UGEDialog(wx.Frame):
     def _on_clear(self, _event) -> None:
         self._detected.clear()
         self.lst_media.DeleteAllItems()
-        self.lbl_count.SetLabel("0 média(s) détecté(s)")
+        self.lbl_count.SetLabel(_("0 média(s) détecté(s)"))
         self.btn_add.Disable()
-        speech.speak("Liste effacée.")
+        speech.speak(_("Liste effacée."))
 
     def _on_add(self, _event) -> None:
         idx = self.lst_media.GetFirstSelected()
@@ -719,6 +734,7 @@ class UGEDialog(wx.Frame):
 
         # Si URL interceptée via CDP Fetch, utiliser les headers capturés
         # (inclut les cookies httpOnly invisibles à document.cookie)
+        # Le marqueur "[I] " est un prefixe interne, jamais traduit.
         is_intercepted = self.lst_media.GetItemText(idx, 0).startswith("[I]")
 
         if is_intercepted:
@@ -727,11 +743,11 @@ class UGEDialog(wx.Frame):
             cookies = hdrs[1] or None
             _log.info("Ajout intercepté url=%s cookies=%d chars",
                       url[:80], len(cookies or ""))
-            speech.speak("Ajout direct du média intercepté…", interrupt=False)
+            speech.speak(_("Ajout direct du média intercepté…"), interrupt=False)
             wx.CallAfter(self._finish_add, url, referer, cookies, True)
         else:
             referer = self._page.url if self._page else None
-            speech.speak("Résolution de l'URL en cours…", interrupt=False)
+            speech.speak(_("Résolution de l'URL en cours…"), interrupt=False)
 
             def resolve_and_add():
                 final_url = _resolve_redirect(url, referer)
@@ -743,7 +759,7 @@ class UGEDialog(wx.Frame):
                     skip_info: bool = False) -> None:
         self.btn_add.Enable()
         self._on_add_url(url, referer=referer, cookies=cookies, skip_info=skip_info)
-        speech.speak("Ajouté à la file de téléchargement.")
+        speech.speak(_("Ajouté à la file de téléchargement."))
 
     # ------------------------------------------------------------------
     # Fermeture

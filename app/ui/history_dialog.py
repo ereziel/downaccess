@@ -21,7 +21,7 @@ class HistoryDialog(wx.Dialog):
                  on_redownload: Callable[[HistoryEntry], None] | None = None):
         super().__init__(
             parent,
-            title="Historique des téléchargements",
+            title=_("Historique des téléchargements"),
             style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER,
         )
         self._on_redownload = on_redownload
@@ -45,21 +45,21 @@ class HistoryDialog(wx.Dialog):
         self.lst = wx.ListCtrl(
             self,
             style=wx.LC_REPORT | wx.LC_SINGLE_SEL,
-            name="Historique des téléchargements",
+            name=_("Historique des téléchargements"),
         )
-        self.lst.InsertColumn(0, "Titre",  width=320)
-        self.lst.InsertColumn(1, "Site",   width=120)
-        self.lst.InsertColumn(2, "Format", width=90)
-        self.lst.InsertColumn(3, "Date",   width=130)
-        self.lst.InsertColumn(4, "Statut", width=80)
+        self.lst.InsertColumn(0, _("Titre"),  width=320)
+        self.lst.InsertColumn(1, _("Site"),   width=120)
+        self.lst.InsertColumn(2, _("Format"), width=90)
+        self.lst.InsertColumn(3, _("Date"),   width=130)
+        self.lst.InsertColumn(4, _("Statut"), width=80)
 
         btn_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        self.btn_open_file   = wx.Button(self, label="Ouvrir le &fichier")
-        self.btn_open_folder = wx.Button(self, label="Ouvrir le &dossier")
-        self.btn_copy_url    = wx.Button(self, label="&Copier l'URL")
-        self.btn_redownload  = wx.Button(self, label="&Re-télécharger")
-        self.btn_clear       = wx.Button(self, label="&Vider l'historique")
-        self.btn_close       = wx.Button(self, wx.ID_CLOSE, label="Fer&mer")
+        self.btn_open_file   = wx.Button(self, label=_("Ouvrir le &fichier"))
+        self.btn_open_folder = wx.Button(self, label=_("Ouvrir le &dossier"))
+        self.btn_copy_url    = wx.Button(self, label=_("&Copier l'URL"))
+        self.btn_redownload  = wx.Button(self, label=_("&Re-télécharger"))
+        self.btn_clear       = wx.Button(self, label=_("&Vider l'historique"))
+        self.btn_close       = wx.Button(self, wx.ID_CLOSE, label=_("Fer&mer"))
         for b in (self.btn_open_file, self.btn_open_folder, self.btn_copy_url,
                   self.btn_redownload, self.btn_clear, self.btn_close):
             btn_sizer.Add(b, 0, wx.RIGHT, 6)
@@ -78,8 +78,8 @@ class HistoryDialog(wx.Dialog):
             self.lst.SetItem(idx, 1, e.site or "")
             self.lst.SetItem(idx, 2, _format_label(e.format_spec))
             self.lst.SetItem(idx, 3, _format_date(e.timestamp))
-            self.lst.SetItem(idx, 4, "Réussi" if e.status == "success" else "Échec")
-        self.lbl_count.SetLabel(f"{len(self._entries)} entrée(s)")
+            self.lst.SetItem(idx, 4, _("Réussi") if e.status == "success" else _("Échec"))
+        self.lbl_count.SetLabel(_("{count} entrée(s)").format(count=len(self._entries)))
 
     def _bind_events(self) -> None:
         self.btn_open_file.Bind(wx.EVT_BUTTON,   self._on_open_file)
@@ -103,28 +103,28 @@ class HistoryDialog(wx.Dialog):
             return
         if not e.filepath or not os.path.exists(e.filepath):
             wx.MessageBox(
-                "Le fichier n'existe plus à cet emplacement.",
-                "Fichier introuvable", wx.OK | wx.ICON_WARNING, self,
+                _("Le fichier n'existe plus à cet emplacement."),
+                _("Fichier introuvable"), wx.OK | wx.ICON_WARNING, self,
             )
             return
         try:
             os.startfile(e.filepath)
         except OSError as exc:
-            wx.MessageBox(str(exc), "Erreur", wx.OK | wx.ICON_ERROR, self)
+            wx.MessageBox(str(exc), _("Erreur"), wx.OK | wx.ICON_ERROR, self)
 
     def _on_open_folder(self, _event) -> None:
         e = self._selected()
         if not e or not e.filepath:
             wx.MessageBox(
-                "Aucun chemin enregistré pour cette entrée.",
-                "Dossier introuvable", wx.OK | wx.ICON_INFORMATION, self,
+                _("Aucun emplacement enregistré pour cette entrée."),
+                _("Dossier introuvable"), wx.OK | wx.ICON_INFORMATION, self,
             )
             return
         folder = os.path.dirname(e.filepath)
         if not os.path.isdir(folder):
             wx.MessageBox(
-                f"Le dossier n'existe plus :\n{folder}",
-                "Dossier introuvable", wx.OK | wx.ICON_WARNING, self,
+                _("Le dossier n'existe plus :\n{folder}").format(folder=folder),
+                _("Dossier introuvable"), wx.OK | wx.ICON_WARNING, self,
             )
             return
         if os.path.exists(e.filepath):
@@ -142,8 +142,8 @@ class HistoryDialog(wx.Dialog):
             finally:
                 wx.TheClipboard.Close()
             wx.MessageBox(
-                "L'URL a été copiée dans le presse-papiers.",
-                "URL copiée", wx.OK | wx.ICON_INFORMATION, self,
+                _("L'URL a été copiée dans le presse-papiers."),
+                _("URL copiée"), wx.OK | wx.ICON_INFORMATION, self,
             )
 
     def _on_redownload_clicked(self, _event) -> None:
@@ -152,7 +152,7 @@ class HistoryDialog(wx.Dialog):
             return
         if self._on_redownload is None:
             wx.MessageBox(
-                "Action indisponible.", "Erreur",
+                _("Action indisponible."), _("Erreur"),
                 wx.OK | wx.ICON_ERROR, self,
             )
             return
@@ -163,8 +163,8 @@ class HistoryDialog(wx.Dialog):
         if not self._entries:
             return
         if wx.MessageBox(
-            "Vider tout l'historique ? Cette action est irréversible.",
-            "Confirmer", wx.YES_NO | wx.ICON_QUESTION, self,
+            _("Vider tout l'historique ? Cette action est irréversible."),
+            _("Confirmer"), wx.YES_NO | wx.ICON_QUESTION, self,
         ) != wx.YES:
             return
         history.clear()
@@ -182,7 +182,7 @@ def _format_date(iso: str) -> str:
 
 def _format_label(spec: str) -> str:
     if spec == "auto":
-        return "Auto"
+        return _("Auto")
     if spec == "subtitles_only":
-        return "Sous-titres"
+        return _("Sous-titres")
     return (spec or "").upper()

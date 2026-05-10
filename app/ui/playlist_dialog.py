@@ -19,7 +19,7 @@ class PlaylistDialog(wx.Dialog):
                  default_numbering: int = NUMBER_ORIGINAL):
         super().__init__(
             parent,
-            title=f"Playlist — {playlist_title}",
+            title=_("Playlist — {title}").format(title=playlist_title),
             style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER,
         )
         self._entries = entries
@@ -39,27 +39,27 @@ class PlaylistDialog(wx.Dialog):
         main_sizer = wx.BoxSizer(wx.VERTICAL)
 
         lbl = wx.StaticText(panel,
-            label=f"Sélectionnez les vidéos à télécharger ({len(entries)} entrées) :")
+            label=_("Sélectionnez les vidéos à télécharger ({count} entrées) :").format(count=len(entries)))
 
         # ListCtrl avec cases à cocher natives (UIA/MSAA → NVDA)
         self.lst = wx.ListCtrl(
             panel,
             style=wx.LC_REPORT | wx.LC_SINGLE_SEL | wx.BORDER_SUNKEN,
-            name="Entrées de la playlist",
+            name=_("Entrées de la playlist"),
         )
         self.lst.EnableCheckBoxes()
-        self.lst.InsertColumn(0, "Titre", width=460)
+        self.lst.InsertColumn(0, _("Titre"), width=460)
 
         for i, entry in enumerate(entries):
-            title = entry.get("title") or entry.get("url") or f"Entrée {i + 1}"
+            title = entry.get("title") or entry.get("url") or _("Entrée {n}").format(n=i + 1)
             self.lst.InsertItem(i, f"{i + 1}. {title}")
             self.lst.CheckItem(i, True)
 
         # Boutons de sélection rapide
         row_sel = wx.BoxSizer(wx.HORIZONTAL)
-        self.btn_all    = wx.Button(panel, label="Tout sélectionner")
-        self.btn_none   = wx.Button(panel, label="Tout désélectionner")
-        self.btn_invert = wx.Button(panel, label="Inverser la sélection")
+        self.btn_all    = wx.Button(panel, label=_("Tout sélectionner"))
+        self.btn_none   = wx.Button(panel, label=_("Tout désélectionner"))
+        self.btn_invert = wx.Button(panel, label=_("Inverser la sélection"))
         row_sel.Add(self.btn_all,    0, wx.RIGHT, 6)
         row_sel.Add(self.btn_none,   0, wx.RIGHT, 6)
         row_sel.Add(self.btn_invert, 0)
@@ -67,15 +67,15 @@ class PlaylistDialog(wx.Dialog):
         # Numérotation des fichiers
         self.radio_number = wx.RadioBox(
             panel,
-            label="Numérotation des fichiers",
+            label=_("Numérotation des fichiers"),
             choices=[
-                "Numéro dans la playlist (position originale)",
-                "Numéro séquentiel (1, 2, 3...)",
-                "Ne pas numéroter",
+                _("Numéro dans la playlist (position originale)"),
+                _("Numéro séquentiel (1, 2, 3...)"),
+                _("Ne pas numéroter"),
             ],
             majorDimension=1,
             style=wx.RA_SPECIFY_COLS,
-            name="Numérotation des fichiers",
+            name=_("Numérotation des fichiers"),
         )
         self.radio_number.SetSelection(self._default_numbering)
 
@@ -85,8 +85,8 @@ class PlaylistDialog(wx.Dialog):
 
         # OK / Annuler
         btn_sizer = wx.StdDialogButtonSizer()
-        self.btn_ok     = wx.Button(panel, wx.ID_OK,     label="Télécharger la sélection")
-        self.btn_cancel = wx.Button(panel, wx.ID_CANCEL, label="Annuler")
+        self.btn_ok     = wx.Button(panel, wx.ID_OK,     label=_("Télécharger la sélection"))
+        self.btn_cancel = wx.Button(panel, wx.ID_CANCEL, label=_("Annuler"))
         self.btn_ok.SetDefault()
         btn_sizer.AddButton(self.btn_ok)
         btn_sizer.AddButton(self.btn_cancel)
@@ -143,10 +143,10 @@ class PlaylistDialog(wx.Dialog):
 
     def _on_ok(self, _event) -> None:
         if not self.get_selected_entries():
-            speech.speak("Veuillez sélectionner au moins une entrée.")
+            speech.speak(_("Veuillez sélectionner au moins une entrée."))
             wx.MessageBox(
-                "Veuillez sélectionner au moins une entrée.",
-                "Sélection vide",
+                _("Veuillez sélectionner au moins une entrée."),
+                _("Sélection vide"),
                 wx.OK | wx.ICON_WARNING,
                 self,
             )
@@ -162,7 +162,9 @@ class PlaylistDialog(wx.Dialog):
             speech.speak(label)
 
     def _count_label(self, n: int) -> str:
-        return f"{n} / {len(self._entries)} vidéo(s) sélectionnée(s)"
+        return _("{selected} / {total} vidéo(s) sélectionnée(s)").format(
+            selected=n, total=len(self._entries)
+        )
 
     # ------------------------------------------------------------------
     # API publique

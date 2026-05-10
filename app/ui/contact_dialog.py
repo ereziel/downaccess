@@ -7,12 +7,17 @@ from app.core import speech
 from app.core import error_reporter
 
 
-CONTACT_TYPES = [
-    ("suggestion", "Suggestion de fonctionnalité"),
-    ("bug",        "Signaler un bug"),
-    ("question",   "Question générale"),
-    ("other",      "Autre"),
-]
+# Cles internes des types de contact (jamais traduites).
+CONTACT_TYPE_CODES = ["suggestion", "bug", "question", "other"]
+
+
+def _contact_type_labels():
+    return [
+        _("Suggestion de fonctionnalité"),
+        _("Signaler un bug"),
+        _("Question générale"),
+        _("Autre"),
+    ]
 
 
 class ContactDialog(wx.Dialog):
@@ -20,7 +25,7 @@ class ContactDialog(wx.Dialog):
     def __init__(self, parent, saved_email: str = "", on_email_saved=None):
         super().__init__(
             parent,
-            title="Contacter le support — DownAccess",
+            title=_("Contacter le support — DownAccess"),
             style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER,
             size=(560, 460),
         )
@@ -38,29 +43,29 @@ class ContactDialog(wx.Dialog):
         sizer = wx.BoxSizer(wx.VERTICAL)
 
         # Email
-        lbl_email = wx.StaticText(self, label="Votre adresse email (obligatoire pour recevoir une réponse) :")
+        lbl_email = wx.StaticText(self, label=_("Votre adresse email (obligatoire pour recevoir une réponse) :"))
         sizer.Add(lbl_email, 0, wx.LEFT | wx.RIGHT | wx.TOP, 12)
-        self.txt_email = wx.TextCtrl(self, name="Adresse email", value=self._saved_email)
+        self.txt_email = wx.TextCtrl(self, name=_("Adresse email"), value=self._saved_email)
         sizer.Add(self.txt_email, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 8)
 
         # Type de message
-        lbl_type = wx.StaticText(self, label="Type de message :")
+        lbl_type = wx.StaticText(self, label=_("Type de message :"))
         sizer.Add(lbl_type, 0, wx.LEFT | wx.RIGHT | wx.TOP, 12)
         self.cho_type = wx.Choice(
             self,
-            choices=[label for _, label in CONTACT_TYPES],
-            name="Type de message",
+            choices=_contact_type_labels(),
+            name=_("Type de message"),
         )
         self.cho_type.SetSelection(0)
         sizer.Add(self.cho_type, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 8)
 
         # Message
-        lbl_msg = wx.StaticText(self, label="Message :")
+        lbl_msg = wx.StaticText(self, label=_("Message :"))
         sizer.Add(lbl_msg, 0, wx.LEFT | wx.RIGHT | wx.TOP, 12)
         self.txt_message = wx.TextCtrl(
             self,
             style=wx.TE_MULTILINE,
-            name="Message",
+            name=_("Message"),
         )
         sizer.Add(self.txt_message, 1, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 8)
 
@@ -70,10 +75,10 @@ class ContactDialog(wx.Dialog):
 
         # Boutons
         btn_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        self.btn_send   = wx.Button(self, wx.ID_OK,     label="Envoyer",
-                                    name="Envoyer le message")
-        self.btn_cancel = wx.Button(self, wx.ID_CANCEL, label="Annuler",
-                                    name="Annuler")
+        self.btn_send   = wx.Button(self, wx.ID_OK,     label=_("Envoyer"),
+                                    name=_("Envoyer le message"))
+        self.btn_cancel = wx.Button(self, wx.ID_CANCEL, label=_("Annuler"),
+                                    name=_("Annuler"))
         btn_sizer.AddStretchSpacer()
         btn_sizer.Add(self.btn_send,   0, wx.RIGHT, 8)
         btn_sizer.Add(self.btn_cancel, 0, wx.RIGHT, 8)
@@ -91,13 +96,13 @@ class ContactDialog(wx.Dialog):
     def set_sending(self) -> None:
         self.btn_send.Enable(False)
         self.btn_cancel.Enable(False)
-        self.lbl_status.SetLabel("Envoi en cours…")
-        speech.speak("Envoi en cours.")
+        self.lbl_status.SetLabel(_("Envoi en cours…"))
+        speech.speak(_("Envoi en cours."))
         self.Layout()
 
     def set_done(self, success: bool, message: str) -> None:
         self.lbl_status.SetLabel(message)
-        self.btn_cancel.SetLabel("Fermer")
+        self.btn_cancel.SetLabel(_("Fermer"))
         self.btn_cancel.Enable(True)
         self.btn_cancel.SetFocus()
         if success:
@@ -113,15 +118,16 @@ class ContactDialog(wx.Dialog):
 
     def get_type_key(self) -> str:
         idx = self.cho_type.GetSelection()
-        if 0 <= idx < len(CONTACT_TYPES):
-            return CONTACT_TYPES[idx][0]
+        if 0 <= idx < len(CONTACT_TYPE_CODES):
+            return CONTACT_TYPE_CODES[idx]
         return "other"
 
     def get_type_label(self) -> str:
         idx = self.cho_type.GetSelection()
-        if 0 <= idx < len(CONTACT_TYPES):
-            return CONTACT_TYPES[idx][1]
-        return "Autre"
+        labels = _contact_type_labels()
+        if 0 <= idx < len(labels):
+            return labels[idx]
+        return _("Autre")
 
     def get_email(self) -> str:
         return self.txt_email.GetValue().strip()
@@ -138,20 +144,20 @@ class ContactDialog(wx.Dialog):
         message = self.get_message()
 
         if not email:
-            wx.MessageBox("Veuillez entrer votre adresse email.", "Champ manquant",
+            wx.MessageBox(_("Veuillez entrer votre adresse email."), _("Champ manquant"),
                           wx.OK | wx.ICON_WARNING)
             self.txt_email.SetFocus()
             return
 
         import re
         if not re.match(r'^[^@\s]+@[^@\s]+\.[^@\s]+$', email):
-            wx.MessageBox("L'adresse email semble invalide.", "Email invalide",
+            wx.MessageBox(_("L'adresse email semble invalide."), _("Email invalide"),
                           wx.OK | wx.ICON_WARNING)
             self.txt_email.SetFocus()
             return
 
         if not message:
-            wx.MessageBox("Veuillez écrire un message.", "Champ manquant",
+            wx.MessageBox(_("Veuillez écrire un message."), _("Champ manquant"),
                           wx.OK | wx.ICON_WARNING)
             self.txt_message.SetFocus()
             return

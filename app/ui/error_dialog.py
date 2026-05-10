@@ -21,7 +21,7 @@ class ErrorDialog(wx.Dialog):
     def __init__(self, parent, message: str):
         super().__init__(
             parent,
-            title="Erreur de téléchargement",
+            title=_("Erreur de téléchargement"),
             style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER,
             size=(520, 300),
         )
@@ -33,7 +33,7 @@ class ErrorDialog(wx.Dialog):
     def _build_ui(self, message: str) -> None:
         sizer = wx.BoxSizer(wx.VERTICAL)
 
-        lbl = wx.StaticText(self, label="Une erreur s'est produite :")
+        lbl = wx.StaticText(self, label=_("Une erreur s'est produite :"))
         sizer.Add(lbl, 0, wx.ALL, 12)
 
         lbl_msg = wx.StaticText(self, label=message)
@@ -42,14 +42,14 @@ class ErrorDialog(wx.Dialog):
 
         btn_sizer = wx.BoxSizer(wx.HORIZONTAL)
         self.btn_close   = wx.Button(self, wx.ID_OK,
-                                     label="Fermer",
-                                     name="Fermer")
+                                     label=_("Fermer"),
+                                     name=_("Fermer"))
         self.btn_cookies = wx.Button(self, wx.ID_RETRY,
-                                     label="Réessayer avec les cookies du navigateur",
-                                     name="Réessayer avec les cookies du navigateur")
+                                     label=_("Réessayer avec les cookies du navigateur"),
+                                     name=_("Réessayer avec les cookies du navigateur"))
         self.btn_report  = wx.Button(self, wx.ID_HELP,
-                                     label="Envoyer un rapport d'erreur",
-                                     name="Envoyer un rapport d'erreur")
+                                     label=_("Envoyer un rapport d'erreur"),
+                                     name=_("Envoyer un rapport d'erreur"))
         btn_sizer.AddStretchSpacer()
         btn_sizer.Add(self.btn_close,   0, wx.RIGHT, 8)
         btn_sizer.Add(self.btn_cookies, 0, wx.RIGHT, 8)

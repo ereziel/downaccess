@@ -39,11 +39,11 @@ class UpdateDialog(wx.Dialog):
     def __init__(self, parent, new_version: str, release_notes: str):
         super().__init__(
             parent,
-            title=f"Mise à jour disponible — DownAccess {new_version}",
+            title=_("Mise à jour disponible — DownAccess {version}").format(version=new_version),
             style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER,
             size=(600, 480),
         )
-        self._notes_text = _md_to_plain(release_notes or "Aucune note disponible.")
+        self._notes_text = _md_to_plain(release_notes or _("Aucune note disponible."))
         self._build_ui(new_version)
         self.CentreOnParent()
 
@@ -57,7 +57,7 @@ class UpdateDialog(wx.Dialog):
         # En-tête
         lbl_title = wx.StaticText(
             self,
-            label=f"DownAccess {new_version} est disponible !",
+            label=_("DownAccess {version} est disponible !").format(version=new_version),
         )
         font = lbl_title.GetFont()
         font.SetPointSize(font.GetPointSize() + 2)
@@ -66,7 +66,7 @@ class UpdateDialog(wx.Dialog):
         sizer.Add(lbl_title, 0, wx.ALL, 12)
 
         # Label pour le champ de notes
-        lbl_notes = wx.StaticText(self, label="Notes de version :")
+        lbl_notes = wx.StaticText(self, label=_("Notes de version :"))
         sizer.Add(lbl_notes, 0, wx.LEFT | wx.RIGHT, 12)
 
         # Notes en texte brut (lecture seule, multi-ligne)
@@ -74,7 +74,7 @@ class UpdateDialog(wx.Dialog):
             self,
             value=self._notes_text,
             style=wx.TE_MULTILINE | wx.TE_READONLY | wx.TE_RICH2 | wx.BORDER_SUNKEN,
-            name="Notes de version",
+            name=_("Notes de version"),
         )
         sizer.Add(self._txt_notes, 1, wx.EXPAND | wx.ALL, 8)
 
@@ -82,13 +82,13 @@ class UpdateDialog(wx.Dialog):
         btn_sizer = wx.BoxSizer(wx.HORIZONTAL)
         self.btn_update = wx.Button(
             self, wx.ID_OK,
-            label="Mettre à jour maintenant",
-            name="Mettre à jour maintenant",
+            label=_("Mettre à jour maintenant"),
+            name=_("Mettre à jour maintenant"),
         )
         self.btn_later = wx.Button(
             self, wx.ID_CANCEL,
-            label="Plus tard",
-            name="Reporter la mise à jour",
+            label=_("Plus tard"),
+            name=_("Reporter la mise à jour"),
         )
         self.btn_update.SetDefault()
         btn_sizer.AddStretchSpacer()

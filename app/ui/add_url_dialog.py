@@ -12,14 +12,27 @@ FORMAT_M4A        = "m4a"
 FORMAT_SUBS_ONLY  = "subtitles_only"
 FORMAT_MANUAL     = "manual"
 
-_FORMAT_CHOICES = [
-    (FORMAT_AUTO,      "Meilleure qualité automatique"),
-    (FORMAT_MP4,       "Vidéo MP4 (H.264)"),
-    (FORMAT_MP3,       "Audio MP3"),
-    (FORMAT_M4A,       "Audio M4A"),
-    (FORMAT_SUBS_ONLY, "Sous-titres uniquement"),
-    (FORMAT_MANUAL,    "Choisir le format manuellement…"),
+# Codes internes des formats (jamais traduits). _format_labels() retourne les
+# libelles localises au moment de la construction du dialogue.
+_FORMAT_CODES = [
+    FORMAT_AUTO,
+    FORMAT_MP4,
+    FORMAT_MP3,
+    FORMAT_M4A,
+    FORMAT_SUBS_ONLY,
+    FORMAT_MANUAL,
 ]
+
+
+def _format_labels() -> list[str]:
+    return [
+        _("Meilleure qualité automatique"),
+        _("Vidéo MP4 (H.264)"),
+        _("Audio MP3"),
+        _("Audio M4A"),
+        _("Sous-titres uniquement"),
+        _("Choisir le format manuellement…"),
+    ]
 
 
 class AddUrlDialog(wx.Dialog):
@@ -34,7 +47,7 @@ class AddUrlDialog(wx.Dialog):
                  default_subtitles: bool = False):
         super().__init__(
             parent,
-            title="Ajouter des URLs",
+            title=_("Ajouter des URLs"),
             style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER,
         )
         self._default_format = default_format
@@ -55,27 +68,27 @@ class AddUrlDialog(wx.Dialog):
         main_sizer = wx.BoxSizer(wx.VERTICAL)
 
         # Label + TextCtrl URLs
-        lbl_urls = wx.StaticText(panel, label="URL(s) à télécharger (une par ligne) :")
+        lbl_urls = wx.StaticText(panel, label=_("URL(s) à télécharger (une par ligne) :"))
         self.txt_urls = wx.TextCtrl(
             panel,
             style=wx.TE_MULTILINE | wx.TE_PROCESS_ENTER,
             size=(-1, 120),
-            name="URLs",
+            name=_("URLs"),
         )
         self.txt_urls.SetHint("https://www.youtube.com/watch?v=...")
 
         # Format
-        lbl_fmt = wx.StaticText(panel, label="Format de téléchargement :")
+        lbl_fmt = wx.StaticText(panel, label=_("Format de téléchargement :"))
         self.choice_fmt = wx.Choice(
             panel,
-            choices=[label for _, label in _FORMAT_CHOICES],
-            name="Format de téléchargement",
+            choices=_format_labels(),
+            name=_("Format de téléchargement"),
         )
         # Sélection par défaut selon les préférences (post_processing)
-        default_idx = next(
-            (i for i, (val, _) in enumerate(_FORMAT_CHOICES) if val == self._default_format),
-            0,
-        )
+        try:
+            default_idx = _FORMAT_CODES.index(self._default_format)
+        except ValueError:
+            default_idx = 0
         self.choice_fmt.SetSelection(default_idx)
 
         if self._initial_urls:
@@ -85,22 +98,22 @@ class AddUrlDialog(wx.Dialog):
         # Sous-titres (override par URL)
         self.chk_subtitles = wx.CheckBox(
             panel,
-            label="Télécharger les sous-titres avec ce média",
-            name="Télécharger les sous-titres avec ce média",
+            label=_("Télécharger les sous-titres avec ce média"),
+            name=_("Télécharger les sous-titres avec ce média"),
         )
         self.chk_subtitles.SetValue(self._default_subtitles)
 
         # Avertissement "Manuel + plusieurs URLs"
         self.lbl_manual_warn = wx.StaticText(
             panel,
-            label="⚠ Mode manuel disponible pour une seule URL à la fois.",
+            label=_("⚠ Mode manuel disponible pour une seule URL à la fois."),
         )
         self.lbl_manual_warn.Hide()
 
         # Boutons
         btn_sizer = wx.StdDialogButtonSizer()
-        self.btn_ok     = wx.Button(panel, wx.ID_OK,     label="Ajouter à la file")
-        self.btn_cancel = wx.Button(panel, wx.ID_CANCEL, label="Annuler")
+        self.btn_ok     = wx.Button(panel, wx.ID_OK,     label=_("Ajouter à la file"))
+        self.btn_cancel = wx.Button(panel, wx.ID_CANCEL, label=_("Annuler"))
         self.btn_ok.SetDefault()
         btn_sizer.AddButton(self.btn_ok)
         btn_sizer.AddButton(self.btn_cancel)
@@ -153,8 +166,8 @@ class AddUrlDialog(wx.Dialog):
         urls = self.get_urls()
         if not urls:
             wx.MessageBox(
-                "Veuillez saisir au moins une URL.",
-                "URL manquante",
+                _("Veuillez saisir au moins une URL."),
+                _("URL manquante"),
                 wx.OK | wx.ICON_WARNING,
                 self,
             )
@@ -168,10 +181,8 @@ class AddUrlDialog(wx.Dialog):
             query = parsed.query
             if not path and not query:
                 wx.MessageBox(
-                    f"L'URL « {url} » semble pointer vers la page d'accueil d'un site "
-                    "et non vers une vidéo.\n\n"
-                    "Copiez l'URL complète d'une vidéo spécifique.",
-                    "URL invalide",
+                    _("L'URL « {url} » semble pointer vers la page d'accueil d'un site et non vers une vidéo.\n\nCopiez l'URL complète d'une vidéo spécifique.").format(url=url),
+                    _("URL invalide"),
                     wx.OK | wx.ICON_WARNING,
                     self,
                 )
@@ -181,10 +192,8 @@ class AddUrlDialog(wx.Dialog):
         # Manuel + plusieurs URLs → forcer Auto
         if self.get_format_choice() == FORMAT_MANUAL and len(urls) > 1:
             if wx.MessageBox(
-                "Le mode 'Choisir le format manuellement' n'est disponible\n"
-                "que pour une seule URL à la fois.\n\n"
-                "Continuer en mode 'Meilleure qualité automatique' ?",
-                "Format manuel indisponible",
+                _("Le mode 'Choisir le format manuellement' n'est disponible que pour une seule URL à la fois.\n\nContinuer en mode 'Meilleure qualité automatique' ?"),
+                _("Format manuel indisponible"),
                 wx.YES_NO | wx.ICON_QUESTION,
                 self,
             ) == wx.YES:
@@ -204,8 +213,8 @@ class AddUrlDialog(wx.Dialog):
 
     def get_format_choice(self) -> str:
         idx = self.choice_fmt.GetSelection()
-        if 0 <= idx < len(_FORMAT_CHOICES):
-            return _FORMAT_CHOICES[idx][0]
+        if 0 <= idx < len(_FORMAT_CODES):
+            return _FORMAT_CODES[idx]
         return FORMAT_AUTO
 
     def get_subtitles(self) -> bool:

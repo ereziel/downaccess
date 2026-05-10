@@ -2,16 +2,21 @@ import wx
 
 from app.core import speech
 
-# Colonnes du tableau de formats
-FORMAT_COLUMNS = [
-    ("Format ID",   80),
-    ("Extension",   70),
-    ("Résolution", 100),
-    ("Codec vidéo", 110),
-    ("Codec audio", 110),
-    ("Taille est.", 100),
-    ("Note",        120),
-]
+# Largeurs fixes des colonnes du tableau de formats (les libelles sont
+# resolus a la construction du dialogue via _format_columns()).
+_FORMAT_COLUMN_WIDTHS = [80, 70, 100, 110, 110, 100, 120]
+
+
+def _format_columns():
+    return [
+        (_("Format ID"),   _FORMAT_COLUMN_WIDTHS[0]),
+        (_("Extension"),   _FORMAT_COLUMN_WIDTHS[1]),
+        (_("Résolution"),  _FORMAT_COLUMN_WIDTHS[2]),
+        (_("Codec vidéo"), _FORMAT_COLUMN_WIDTHS[3]),
+        (_("Codec audio"), _FORMAT_COLUMN_WIDTHS[4]),
+        (_("Taille est."), _FORMAT_COLUMN_WIDTHS[5]),
+        (_("Note"),        _FORMAT_COLUMN_WIDTHS[6]),
+    ]
 
 
 class FormatDialog(wx.Dialog):
@@ -24,7 +29,7 @@ class FormatDialog(wx.Dialog):
     def __init__(self, parent, title: str, formats: list[dict]):
         super().__init__(
             parent,
-            title=f"Choisir le format — {title}",
+            title=_("Choisir le format — {title}").format(title=title),
             style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER,
         )
         self._formats = formats
@@ -35,7 +40,11 @@ class FormatDialog(wx.Dialog):
         self.SetMinSize((680, 380))
         self.Fit()
         self.CentreOnParent()
-        speech.speak(f"Sélection du format pour {title}. {len(formats)} formats disponibles.")
+        speech.speak(
+            _("Sélection du format pour {title}. {count} formats disponibles.").format(
+                title=title, count=len(formats)
+            )
+        )
 
     # ------------------------------------------------------------------
     # Construction
@@ -46,18 +55,18 @@ class FormatDialog(wx.Dialog):
         main_sizer = wx.BoxSizer(wx.VERTICAL)
 
         lbl = wx.StaticText(panel,
-            label="Sélectionnez le format à télécharger :")
+            label=_("Sélectionnez le format à télécharger :"))
         self.lst = wx.ListCtrl(
             panel,
             style=wx.LC_REPORT | wx.LC_SINGLE_SEL | wx.LC_HRULES | wx.BORDER_SUNKEN,
-            name="Liste des formats disponibles",
+            name=_("Liste des formats disponibles"),
         )
-        for i, (col, width) in enumerate(FORMAT_COLUMNS):
+        for i, (col, width) in enumerate(_format_columns()):
             self.lst.InsertColumn(i, col, width=width)
 
         btn_sizer = wx.StdDialogButtonSizer()
-        self.btn_ok     = wx.Button(panel, wx.ID_OK,     label="Télécharger ce format")
-        self.btn_cancel = wx.Button(panel, wx.ID_CANCEL, label="Annuler")
+        self.btn_ok     = wx.Button(panel, wx.ID_OK,     label=_("Télécharger ce format"))
+        self.btn_cancel = wx.Button(panel, wx.ID_CANCEL, label=_("Annuler"))
         self.btn_ok.SetDefault()
         self.btn_ok.Disable()
         btn_sizer.AddButton(self.btn_ok)
@@ -149,9 +158,9 @@ def _fmt_size(size) -> str:
         return "?"
     size = int(size)
     if size >= 1_073_741_824:
-        return f"{size / 1_073_741_824:.1f} Go"
+        return _("{n:.1f} Go").format(n=size / 1_073_741_824)
     if size >= 1_048_576:
-        return f"{size / 1_048_576:.0f} Mo"
+        return _("{n:.0f} Mo").format(n=size / 1_048_576)
     if size >= 1024:
-        return f"{size / 1024:.0f} Ko"
-    return f"{size} o"
+        return _("{n:.0f} Ko").format(n=size / 1024)
+    return _("{n} o").format(n=size)

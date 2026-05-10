@@ -1,14 +1,40 @@
 import wx
 
-# (label, width_px)
-COLUMNS = [
-    ("Titre",       300),
-    ("Site",        120),
-    ("Format",       90),
-    ("Statut",      110),
-    ("Progression", 100),
-    ("Taille",       80),
-]
+# Codes de statut internes (jamais traduits — utilises pour comparaison).
+STATUS_PENDING = "pending"
+STATUS_ACTIVE  = "active"
+STATUS_PAUSED  = "paused"
+STATUS_DONE    = "done"
+STATUS_ERROR   = "error"
+
+
+def _status_label(code: str) -> str:
+    """Convertit un code de statut interne en libelle localise pour l'affichage."""
+    if code == STATUS_PENDING:
+        return _("En attente")
+    if code == STATUS_ACTIVE:
+        return _("En cours")
+    if code == STATUS_PAUSED:
+        return _("En pause")
+    if code == STATUS_DONE:
+        return _("Terminé")
+    if code == STATUS_ERROR:
+        return _("Erreur")
+    return code
+
+
+def _column_specs():
+    """(label_localise, code_interne, largeur_px). Cle interne pour les comparaisons,
+    libelle pour l'affichage."""
+    return [
+        (_("Titre"),       "title", 300),
+        (_("Site"),        "site",  120),
+        (_("Format"),      "fmt",    90),
+        (_("Statut"),      "state", 110),
+        (_("Progression"), "pct",   100),
+        (_("Taille"),      "size",   80),
+    ]
+
 
 COL_TITLE = 0
 COL_SITE  = 1
@@ -29,17 +55,19 @@ class DownloadList(wx.ListCtrl):
             parent,
             style=wx.LC_REPORT | wx.LC_HRULES | wx.LC_VRULES | wx.BORDER_SUNKEN,
         )
-        self.SetName("File de téléchargement")
+        self.SetName(_("File de téléchargement"))
         self._setup_columns()
         # download_id (str) -> row index (int)
         self._items: dict[str, int] = {}
+        # download_id (str) -> code de statut interne (str)
+        self._status_codes: dict[str, str] = {}
 
     # ------------------------------------------------------------------
     # Setup
     # ------------------------------------------------------------------
 
     def _setup_columns(self) -> None:
-        for i, (label, width) in enumerate(COLUMNS):
+        for i, (label, _code, width) in enumerate(_column_specs()):
             self.InsertColumn(i, label, width=width)
 
     # ------------------------------------------------------------------
@@ -52,10 +80,11 @@ class DownloadList(wx.ListCtrl):
         self.InsertItem(idx, title)
         self.SetItem(idx, COL_SITE,  site)
         self.SetItem(idx, COL_FMT,   fmt)
-        self.SetItem(idx, COL_STATE, "En attente")
+        self.SetItem(idx, COL_STATE, _status_label(STATUS_PENDING))
         self.SetItem(idx, COL_PCT,   "0 %")
         self.SetItem(idx, COL_SIZE,  "")
         self._items[download_id] = idx
+        self._status_codes[download_id] = STATUS_PENDING
         # Sélectionner le nouvel item → NVDA l'annonce
         self.Select(idx)
         self.Focus(idx)
@@ -76,23 +105,27 @@ class DownloadList(wx.ListCtrl):
         idx = self._items.get(download_id)
         if idx is None:
             return
-        self.SetItem(idx, COL_STATE, "En cours")
-        self.SetItem(idx, COL_PCT,   f"{percent:.0f} %")
+        self.SetItem(idx, COL_STATE, _status_label(STATUS_ACTIVE))
+        self._status_codes[download_id] = STATUS_ACTIVE
+        self.SetItem(idx, COL_PCT, f"{percent:.0f} %")
         if size:
             self.SetItem(idx, COL_SIZE, size)
 
-    def set_status(self, download_id: str, status: str) -> None:
+    def set_status(self, download_id: str, code: str) -> None:
+        """Definit le statut a partir d'un code interne (STATUS_*)."""
         idx = self._items.get(download_id)
         if idx is None:
             return
-        self.SetItem(idx, COL_STATE, status)
+        self.SetItem(idx, COL_STATE, _status_label(code))
+        self._status_codes[download_id] = code
 
     def complete_item(self, download_id: str, size: str = "") -> None:
         idx = self._items.get(download_id)
         if idx is None:
             return
-        self.SetItem(idx, COL_STATE, "Terminé")
-        self.SetItem(idx, COL_PCT,   "100 %")
+        self.SetItem(idx, COL_STATE, _status_label(STATUS_DONE))
+        self._status_codes[download_id] = STATUS_DONE
+        self.SetItem(idx, COL_PCT, "100 %")
         if size:
             self.SetItem(idx, COL_SIZE, size)
 
@@ -100,7 +133,8 @@ class DownloadList(wx.ListCtrl):
         idx = self._items.get(download_id)
         if idx is None:
             return
-        self.SetItem(idx, COL_STATE, "Erreur")
+        self.SetItem(idx, COL_STATE, _status_label(STATUS_ERROR))
+        self._status_codes[download_id] = STATUS_ERROR
 
     def remove_item(self, download_id: str) -> None:
         """Supprime un item par son download_id."""
@@ -109,15 +143,12 @@ class DownloadList(wx.ListCtrl):
             return
         self.DeleteItem(idx)
         del self._items[download_id]
+        self._status_codes.pop(download_id, None)
         self._items = {k: (v - 1 if v > idx else v) for k, v in self._items.items()}
 
-    def count_by_status(self, status: str) -> int:
-        """Compte les items ayant un statut donné."""
-        n = 0
-        for idx in self._items.values():
-            if self.GetItemText(idx, COL_STATE) == status:
-                n += 1
-        return n
+    def count_by_status(self, code: str) -> int:
+        """Compte les items ayant un code de statut donné."""
+        return sum(1 for c in self._status_codes.values() if c == code)
 
     def remove_selected(self) -> str | None:
         """Supprime l'item sélectionné. Retourne son download_id ou None."""
@@ -128,6 +159,7 @@ class DownloadList(wx.ListCtrl):
         self.DeleteItem(idx)
         if dl_id:
             del self._items[dl_id]
+            self._status_codes.pop(dl_id, None)
         # Réindexer les items dont le rang était supérieur à idx
         self._items = {
             k: (v - 1 if v > idx else v)
@@ -142,11 +174,11 @@ class DownloadList(wx.ListCtrl):
         return next((k for k, v in self._items.items() if v == idx), None)
 
     def get_selected_status(self) -> str | None:
-        """Retourne le statut de l'item sélectionné (En attente, En cours, Terminé, Erreur)."""
-        idx = self.GetFirstSelected()
-        if idx == -1:
+        """Retourne le code de statut interne de l'item sélectionné, ou None."""
+        dl_id = self.get_selected_id()
+        if dl_id is None:
             return None
-        return self.GetItemText(idx, COL_STATE)
+        return self._status_codes.get(dl_id)
 
     def move_item_up(self, download_id: str) -> bool:
         idx = self._items.get(download_id)
@@ -177,8 +209,9 @@ class DownloadList(wx.ListCtrl):
         return True
 
     def _swap_rows(self, row_a: int, row_b: int) -> None:
-        data_a = [self.GetItemText(row_a, col) for col in range(len(COLUMNS))]
-        data_b = [self.GetItemText(row_b, col) for col in range(len(COLUMNS))]
+        n_cols = len(_column_specs())
+        data_a = [self.GetItemText(row_a, col) for col in range(n_cols)]
+        data_b = [self.GetItemText(row_b, col) for col in range(n_cols)]
         for col, val in enumerate(data_b):
             self.SetItem(row_a, col, val)
         for col, val in enumerate(data_a):
@@ -195,3 +228,4 @@ class DownloadList(wx.ListCtrl):
         """Supprime tous les items de la liste."""
         self.DeleteAllItems()
         self._items.clear()
+        self._status_codes.clear()
