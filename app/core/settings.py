@@ -44,7 +44,7 @@ def _config_file() -> Path:
 def load() -> dict:
     cfg = dict(DEFAULTS)
     try:
-        with open(_config_file(), "r", encoding="utf-8") as f:
+        with open(_config_file(), encoding="utf-8") as f:
             saved = json.load(f)
         cfg.update({k: v for k, v in saved.items() if k in DEFAULTS})
     except FileNotFoundError:

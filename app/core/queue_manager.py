@@ -2,7 +2,7 @@ import logging
 import threading
 import uuid
 from dataclasses import dataclass, field
-from typing import Callable
+from collections.abc import Callable
 
 from app.core.downloader import Downloader, DownloadError, DownloadInfo, DownloadProgress
 

@@ -10,9 +10,9 @@ import threading
 import urllib.error
 import urllib.request
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 from pathlib import Path
-from typing import Callable
+from collections.abc import Callable
 
 from app.version import __version__
 from app.core.i18n import _translate as _
@@ -46,7 +46,7 @@ def build_report(
         "app_version":   __version__,
         "ytdlp_version": ytdlp_ver,
         "os":            platform.version(),
-        "timestamp":     datetime.now(timezone.utc).isoformat(),
+        "timestamp":     datetime.now(UTC).isoformat(),
         "url":           url or "",
         "site":          site or "",
         "format_spec":   format_spec or "",

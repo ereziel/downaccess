@@ -6,7 +6,7 @@ import tempfile
 import time
 import threading
 from dataclasses import dataclass, field
-from typing import Callable
+from collections.abc import Callable
 from urllib.parse import urlparse
 
 import yt_dlp

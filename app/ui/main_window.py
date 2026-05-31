@@ -33,7 +33,6 @@ from app.core import settings as cfg
 from app.core import speech
 from app.core import updater
 from app.core import app_updater
-from app.version import __version__
 from app.core.downloader import DownloadInfo, DownloadProgress
 from app.core.queue_manager import QueueManager
 from app.ui.add_url_dialog import AddUrlDialog, FORMAT_MANUAL
@@ -816,7 +815,6 @@ class MainWindow(wx.Frame):
         speech.speak(_("Recherche sur {site}…").format(site=site_label))
 
         import threading
-        from app.core.downloader import Downloader, DownloadError
 
         result = {}
 
@@ -1253,7 +1251,7 @@ class MainWindow(wx.Frame):
                 return
             path = dlg.GetPath()
         try:
-            with open(path, "r", encoding="utf-8", errors="replace") as f:
+            with open(path, encoding="utf-8", errors="replace") as f:
                 content = f.read()
         except OSError as exc:
             wx.MessageBox(

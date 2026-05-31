@@ -9,7 +9,6 @@ import re
 
 import wx
 
-from app.core import speech
 
 
 def _md_to_plain(md: str) -> str:
