@@ -1,12 +1,14 @@
-## DownAccess 0.1.15
+## DownAccess 0.1.16
+
+### Nouveautés
+
+- **Application disponible en anglais.** DownAccess est maintenant entièrement bilingue, français et anglais. Un sélecteur dans Préférences vous laisse choisir Automatique, Français ou Anglais — par défaut, l'application suit la langue de Windows.
 
 ### Améliorations
 
-- **Mises à jour plus simples.** Les mises à jour s'installent désormais sans assistant : fini les « Suivant → Suivant → Installer ». DownAccess se met à jour tout seul, affiche une simple barre de progression, puis se rouvre directement dans la nouvelle version. Vous n'avez plus rien à cliquer.
+- **Notes de mise à jour dans votre langue.** Les notes affichées lors d'une mise à jour s'adaptent désormais à la langue choisie dans l'application.
 
 ### Note
-
-Cette amélioration prend effet à partir de la mise à jour **suivante** : l'installation de cette version-ci passe encore par l'assistant une dernière fois, puis toutes les mises à jour ultérieures seront automatiques.
 
 Cette version reste compatible avec votre installation existante et conserve vos préférences.
 
