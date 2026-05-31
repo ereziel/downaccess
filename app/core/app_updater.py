@@ -234,9 +234,14 @@ def download_and_install(new_version: str, on_progress, on_error,
             on_error(_("Impossible de finaliser le fichier : {error}").format(error=exc))
             return
 
-        # Lancer l'installeur
+        # Lancer l'installeur en mode silencieux :
+        #   /SILENT  → barre de progression seule, pas d'assistant Suivant/Suivant
+        #   /NORESTART → ne jamais redemarrer Windows
+        # Le dossier, la langue et les raccourcis existent deja (mise a jour, pas
+        # premiere install) → inutile de repasser par l'assistant. L'installeur
+        # relance l'app automatiquement (voir [Run] skipifnotsilent dans le .iss).
         try:
-            proc = subprocess.Popen([dest_path])
+            proc = subprocess.Popen([dest_path, "/SILENT", "/NORESTART"])
         except Exception as exc:
             on_error(_("Impossible de lancer l'installeur : {error}").format(error=exc))
             return
