@@ -37,3 +37,15 @@ def browser_name(path: str) -> str:
     if "brave" in low:
         return "Brave"
     return "Navigateur"
+
+
+def downaccess_profile_dir() -> str:
+    """Dossier de profil navigateur dédié à DownAccess (persistant).
+
+    L'utilisateur s'y connecte une seule fois via le dialogue de connexion ;
+    les cookies y sont conservés et relus par yt-dlp (cookiesfrombrowser).
+    Profil isolé = aucun conflit avec le navigateur habituel de l'utilisateur,
+    qu'il soit ouvert ou non.
+    """
+    appdata = os.environ.get("APPDATA") or os.path.expanduser("~")
+    return os.path.join(appdata, "DownAccess", "BrowserProfile")

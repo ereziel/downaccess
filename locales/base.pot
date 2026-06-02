@@ -143,11 +143,11 @@ msgstr ""
 msgid "Adresse URL"
 msgstr ""
 
-#: app/ui/login_dialog.py:56
+#: app/ui/login_dialog.py:57
 msgid "Adresse du site"
 msgstr ""
 
-#: app/ui/login_dialog.py:52
+#: app/ui/login_dialog.py:53
 msgid "Adresse du site :"
 msgstr ""
 
@@ -271,7 +271,7 @@ msgid ""
 "Installez Google Chrome, Microsoft Edge ou Brave."
 msgstr ""
 
-#: app/ui/login_dialog.py:117
+#: app/ui/login_dialog.py:119
 msgid ""
 "Aucun navigateur compatible trouvé.\n"
 "Installez Google Chrome, Microsoft Edge ou Brave."
@@ -477,7 +477,7 @@ msgstr ""
 msgid "Confirmer l'annulation"
 msgstr ""
 
-#: app/ui/login_dialog.py:178
+#: app/ui/login_dialog.py:198
 msgid "Confirmer la suppression"
 msgstr ""
 
@@ -485,12 +485,12 @@ msgstr ""
 msgid "Connexion à un site — Comment ça marche"
 msgstr ""
 
-#: app/ui/login_dialog.py:38
+#: app/ui/login_dialog.py:39
 msgid ""
-"Connexion à un site. Saisissez l'adresse et connectez-vous dans le "
-"navigateur. Vos cookies seront conservés pour les prochains téléchargements."
-" Note : les contenus protégés par DRM (Netflix, Disney+, Prime Video) ne "
-"sont pas pris en charge."
+"Connexion à un site. Saisissez l'adresse : un navigateur dédié à DownAccess "
+"s'ouvrira. Connectez-vous une fois ; vos cookies seront conservés pour les "
+"prochains téléchargements. Note : les contenus protégés par DRM (Netflix, "
+"Disney+, Prime Video) ne sont pas pris en charge."
 msgstr ""
 
 #: app/ui/contact_dialog.py:28
@@ -501,11 +501,11 @@ msgstr ""
 msgid "Continuer"
 msgstr ""
 
-#: app/ui/login_dialog.py:202
+#: app/ui/login_dialog.py:222
 msgid "Cookies de {domain} supprimés."
 msgstr ""
 
-#: app/ui/login_dialog.py:200
+#: app/ui/login_dialog.py:220
 msgid ""
 "Cookies de {domain} supprimés.\n"
 "Vous êtes déconnecté de ce site."
@@ -665,11 +665,12 @@ msgstr ""
 msgid "Enregistrer"
 msgstr ""
 
-#: app/ui/login_dialog.py:68
+#: app/ui/login_dialog.py:69
 msgid ""
-"Entrez l'adresse du site et connectez-vous dans le navigateur.\n"
-"Votre vrai profil Chrome est utilisé : vos cookies seront conservés\n"
-"et réutilisés automatiquement pour les téléchargements.\n"
+"Entrez l'adresse du site et connectez-vous dans le navigateur dédié à\n"
+"DownAccess qui va s'ouvrir. C'est un navigateur séparé de votre navigation\n"
+"habituelle : vous restez connecté une fois pour toutes, et vos cookies sont\n"
+"réutilisés automatiquement pour les téléchargements.\n"
 "\n"
 "Note : les contenus protégés par DRM ne sont pas pris en charge."
 msgstr ""
@@ -716,14 +717,14 @@ msgid "Envoyer un rapport d'erreur"
 msgstr ""
 
 #: app/ui/download_list.py:22 app/ui/history_dialog.py:113
-#: app/ui/history_dialog.py:155 app/ui/login_dialog.py:155
-#: app/ui/login_dialog.py:172 app/ui/login_dialog.py:207
+#: app/ui/history_dialog.py:155 app/ui/login_dialog.py:175
+#: app/ui/login_dialog.py:192 app/ui/login_dialog.py:227
 #: app/ui/main_window.py:1072 app/ui/main_window.py:848
 #: app/ui/settings_dialog.py:600
 msgid "Erreur"
 msgstr ""
 
-#: app/ui/login_dialog.py:152 app/ui/uge_dialog.py:623
+#: app/ui/login_dialog.py:172 app/ui/uge_dialog.py:623
 msgid "Erreur : {error}"
 msgstr ""
 
@@ -778,7 +779,7 @@ msgid ""
 "{error}"
 msgstr ""
 
-#: app/ui/login_dialog.py:206
+#: app/ui/login_dialog.py:226
 msgid ""
 "Erreur lors de la suppression des cookies :\n"
 "{error}"
@@ -847,7 +848,7 @@ msgid "Fer&mer"
 msgstr ""
 
 #: app/ui/contact_dialog.py:105 app/ui/error_dialog.py:45
-#: app/ui/error_dialog.py:46 app/ui/login_dialog.py:85
+#: app/ui/error_dialog.py:46 app/ui/login_dialog.py:87
 #: app/ui/main_window.py:1376 app/ui/player_dialog.py:119
 #: app/ui/report_dialog.py:117 app/ui/search_dialog.py:184
 #: app/ui/uge_dialog.py:305 app/ui/warning_dialog.py:41
@@ -962,7 +963,7 @@ msgstr ""
 msgid "Impossible d'extraire l'URL de streaming."
 msgstr ""
 
-#: app/ui/login_dialog.py:154 app/ui/uge_dialog.py:591
+#: app/ui/login_dialog.py:174 app/ui/uge_dialog.py:591
 msgid ""
 "Impossible d'ouvrir le navigateur.\n"
 "\n"
@@ -973,11 +974,17 @@ msgstr ""
 msgid "Impossible de contacter GitHub."
 msgstr ""
 
+#: app/ui/login_dialog.py:149
+msgid ""
+"Impossible de démarrer le navigateur dédié à DownAccess.\n"
+"Fermez les éventuelles fenêtres DownAccess restées ouvertes, puis réessayez."
+msgstr ""
+
 #: app/ui/main_window.py:1229 app/ui/main_window.py:1240
 msgid "Impossible de déplacer."
 msgstr ""
 
-#: app/ui/login_dialog.py:171
+#: app/ui/login_dialog.py:191
 msgid "Impossible de déterminer le domaine du site."
 msgstr ""
 
@@ -1202,8 +1209,18 @@ msgid ""
 "Continuer en mode 'Meilleure qualité automatique' ?"
 msgstr ""
 
-#: app/ui/login_dialog.py:136
-msgid "Le navigateur"
+#: app/ui/login_dialog.py:158
+msgid ""
+"Le navigateur DownAccess est ouvert sur : {title}\n"
+"\n"
+"Connectez-vous, puis fermez cette fenêtre. Si vous êtes déjà connecté,\n"
+"il n'y a rien à faire. Vos cookies sont conservés pour les prochains téléchargements."
+msgstr ""
+
+#: app/ui/login_dialog.py:167
+msgid ""
+"Le navigateur DownAccess est ouvert. Connectez-vous puis fermez cette "
+"fenêtre."
 msgstr ""
 
 #: app/ui/main_window.py:1271
@@ -1408,15 +1425,15 @@ msgstr ""
 msgid "Original (sans conversion)"
 msgstr ""
 
-#: app/ui/login_dialog.py:109
+#: app/ui/login_dialog.py:111
 msgid "Ouverture du navigateur…"
 msgstr ""
 
-#: app/ui/login_dialog.py:59
+#: app/ui/login_dialog.py:60
 msgid "Ouvrir"
 msgstr ""
 
-#: app/ui/login_dialog.py:59
+#: app/ui/login_dialog.py:60
 msgid "Ouvrir dans le navigateur"
 msgstr ""
 
@@ -1706,7 +1723,7 @@ msgstr ""
 msgid "Se &connecter à un site..."
 msgstr ""
 
-#: app/ui/login_dialog.py:28
+#: app/ui/login_dialog.py:29
 msgid "Se connecter à un site — DownAccess"
 msgstr ""
 
@@ -1759,15 +1776,15 @@ msgstr ""
 msgid "Supprimer le téléchargement sélectionné"
 msgstr ""
 
-#: app/ui/login_dialog.py:81
+#: app/ui/login_dialog.py:83
 msgid "Supprimer les cookies du site"
 msgstr ""
 
-#: app/ui/login_dialog.py:82
+#: app/ui/login_dialog.py:84
 msgid "Supprimer les cookies du site actuellement ouvert"
 msgstr ""
 
-#: app/ui/login_dialog.py:177
+#: app/ui/login_dialog.py:197
 msgid ""
 "Supprimer tous les cookies de {domain} ?\n"
 "\n"
@@ -2349,18 +2366,6 @@ msgstr ""
 
 #: app/ui/format_dialog.py:161
 msgid "{n:.1f} Go"
-msgstr ""
-
-#: app/ui/login_dialog.py:138
-msgid ""
-"{name} est ouvert sur : {title}\n"
-"\n"
-"Connectez-vous dans {name}, puis fermez cette fenêtre.\n"
-"Vos cookies seront conservés pour les prochains téléchargements."
-msgstr ""
-
-#: app/ui/login_dialog.py:147
-msgid "{name} est ouvert. Connectez-vous puis fermez cette fenêtre."
 msgstr ""
 
 #: app/ui/settings_dialog.py:506

@@ -1,15 +1,11 @@
-## DownAccess 0.1.16
+## DownAccess 0.1.17
 
-### New
+### Fixes
 
-- **App available in English.** DownAccess is now fully bilingual, French and English. A selector in Preferences lets you choose Automatic, French, or English — by default, the app follows your Windows language.
-
-### Improvements
-
-- **Update notes in your language.** The notes shown during an update now match the language selected in the app.
+- **More reliable website sign-in.** The "Sign in to a website" feature now opens a browser dedicated to DownAccess, separate from your usual browsing. It works even when your browser is already open — the error that could appear is gone. You stay signed in: signing in once is enough, and your credentials are kept for your next downloads.
 
 ### Note
 
-This version is compatible with your existing installation and keeps your preferences.
+If you had already signed in to a site with a previous version, sign in once again in this new dedicated browser.
 
 DRM-protected content (Netflix, Disney+, Prime Video, etc.) is not supported.

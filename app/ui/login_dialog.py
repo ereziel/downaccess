@@ -1,8 +1,9 @@
 """
 Dialogue de connexion à un site.
-Ouvre le navigateur Chrome avec le vrai profil de l'utilisateur
-(via DrissionPage) pour que les cookies soient conservés.
-yt-dlp y a accès via cookiesfrombrowser.
+Ouvre un navigateur dans un profil dédié à DownAccess (via DrissionPage)
+pour que les cookies soient conservés et réutilisés par yt-dlp.
+Profil isolé = aucun conflit avec le navigateur habituel de l'utilisateur,
+qu'il soit déjà ouvert ou non. La connexion ne se fait qu'une fois.
 """
 import logging
 import threading
@@ -10,16 +11,16 @@ import threading
 import wx
 
 from app.core import speech
-from app.core.browser import find_browser, browser_name
+from app.core.browser import browser_name, downaccess_profile_dir, find_browser
 
 _log = logging.getLogger("downaccess.login")
 
 
 class LoginDialog(wx.Dialog):
     """
-    Dialogue de connexion. Ouvre Chrome avec le vrai profil utilisateur,
-    l'utilisateur se connecte, puis ferme ce dialogue.
-    Les cookies restent dans le profil Chrome → yt-dlp y accède.
+    Dialogue de connexion. Ouvre un navigateur dans le profil dédié à
+    DownAccess, l'utilisateur se connecte, puis ferme ce dialogue.
+    Les cookies restent dans ce profil → yt-dlp y accède.
     """
 
     def __init__(self, parent):
@@ -37,8 +38,8 @@ class LoginDialog(wx.Dialog):
         speech.speak(
             _(
                 "Connexion à un site. "
-                "Saisissez l'adresse et connectez-vous dans le navigateur. "
-                "Vos cookies seront conservés pour les prochains téléchargements. "
+                "Saisissez l'adresse : un navigateur dédié à DownAccess s'ouvrira. "
+                "Connectez-vous une fois ; vos cookies seront conservés pour les prochains téléchargements. "
                 "Note : les contenus protégés par DRM (Netflix, Disney+, Prime Video) ne sont pas pris en charge."
             ),
         )
@@ -66,9 +67,10 @@ class LoginDialog(wx.Dialog):
         self.lbl_status = wx.StaticText(
             panel,
             label=_(
-                "Entrez l'adresse du site et connectez-vous dans le navigateur.\n"
-                "Votre vrai profil Chrome est utilisé : vos cookies seront conservés\n"
-                "et réutilisés automatiquement pour les téléchargements.\n\n"
+                "Entrez l'adresse du site et connectez-vous dans le navigateur dédié à\n"
+                "DownAccess qui va s'ouvrir. C'est un navigateur séparé de votre navigation\n"
+                "habituelle : vous restez connecté une fois pour toutes, et vos cookies sont\n"
+                "réutilisés automatiquement pour les téléchargements.\n\n"
                 "Note : les contenus protégés par DRM ne sont pas pris en charge."
             ),
         )
@@ -120,7 +122,12 @@ class LoginDialog(wx.Dialog):
                     from DrissionPage import ChromiumPage, ChromiumOptions
                     co = ChromiumOptions()
                     co.set_browser_path(bp)
-                    co.use_system_user_path()
+                    # Profil dédié et persistant à DownAccess (pas le profil
+                    # système) : aucun conflit avec le navigateur habituel de
+                    # l'utilisateur, qu'il soit ouvert ou non. auto_port() après
+                    # set_user_data_path() pour garder le profil + un port libre.
+                    co.set_user_data_path(downaccess_profile_dir())
+                    co.auto_port()
                     self._page = ChromiumPage(co)
                     self._browser_name = browser_name(bp)
                 self._page.get(url)
@@ -128,23 +135,36 @@ class LoginDialog(wx.Dialog):
                 wx.CallAfter(self._on_browser_ready, title)
             except Exception as exc:
                 _log.error("Impossible d'ouvrir le navigateur : %s", exc)
-                wx.CallAfter(self._on_browser_error, str(exc))
+                wx.CallAfter(self._on_browser_error, self._friendly_error(exc))
 
         threading.Thread(target=open_browser, daemon=True).start()
 
+    @staticmethod
+    def _friendly_error(exc: Exception) -> str:
+        """Convertit une erreur technique (souvent un message DrissionPage en
+        chinois) en message clair pour l'utilisateur."""
+        msg = str(exc)
+        if any(s in msg for s in ("127.0.0.1", "9222", "连接", "浏览器")) \
+                or "Connect" in type(exc).__name__:
+            return _(
+                "Impossible de démarrer le navigateur dédié à DownAccess.\n"
+                "Fermez les éventuelles fenêtres DownAccess restées ouvertes, "
+                "puis réessayez."
+            )
+        return msg
+
     def _on_browser_ready(self, title: str) -> None:
-        name = getattr(self, "_browser_name", _("Le navigateur"))
         self.lbl_status.SetLabel(
             _(
-                "{name} est ouvert sur : {title}\n\n"
-                "Connectez-vous dans {name}, puis fermez cette fenêtre.\n"
-                "Vos cookies seront conservés pour les prochains téléchargements."
-            ).format(name=name, title=title)
+                "Le navigateur DownAccess est ouvert sur : {title}\n\n"
+                "Connectez-vous, puis fermez cette fenêtre. Si vous êtes déjà connecté,\n"
+                "il n'y a rien à faire. Vos cookies sont conservés pour les prochains téléchargements."
+            ).format(title=title)
         )
         self.btn_go.Enable()
         self.btn_clear_cookies.Enable()
         speech.speak(
-            _("{name} est ouvert. Connectez-vous puis fermez cette fenêtre.").format(name=name)
+            _("Le navigateur DownAccess est ouvert. Connectez-vous puis fermez cette fenêtre.")
         )
 
     def _on_browser_error(self, error: str) -> None:

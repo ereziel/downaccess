@@ -118,8 +118,8 @@ msgid "Enregistrer"
 msgstr "Save"
 
 #: app/ui/download_list.py:22 app/ui/history_dialog.py:113
-#: app/ui/history_dialog.py:155 app/ui/login_dialog.py:155
-#: app/ui/login_dialog.py:172 app/ui/login_dialog.py:207
+#: app/ui/history_dialog.py:155 app/ui/login_dialog.py:175
+#: app/ui/login_dialog.py:192 app/ui/login_dialog.py:227
 #: app/ui/main_window.py:1072 app/ui/main_window.py:848
 #: app/ui/settings_dialog.py:600
 msgid "Erreur"
@@ -773,7 +773,7 @@ msgid "Extraction guidée — Comment ça marche"
 msgstr "Guided extraction — How it works"
 
 #: app/ui/contact_dialog.py:105 app/ui/error_dialog.py:45
-#: app/ui/error_dialog.py:46 app/ui/login_dialog.py:85
+#: app/ui/error_dialog.py:46 app/ui/login_dialog.py:87
 #: app/ui/main_window.py:1376 app/ui/player_dialog.py:119
 #: app/ui/report_dialog.py:117 app/ui/search_dialog.py:184
 #: app/ui/uge_dialog.py:305 app/ui/warning_dialog.py:41
@@ -1398,7 +1398,7 @@ msgstr "Clear the list of detected media"
 msgid "Entrez une URL pour ouvrir le navigateur."
 msgstr "Enter a URL to open the browser."
 
-#: app/ui/login_dialog.py:152 app/ui/uge_dialog.py:623
+#: app/ui/login_dialog.py:172 app/ui/uge_dialog.py:623
 msgid "Erreur : {error}"
 msgstr "Error: {error}"
 
@@ -1434,7 +1434,7 @@ msgstr ""
 "\n"
 "Size: {size_mb:.1f} MB"
 
-#: app/ui/login_dialog.py:154 app/ui/uge_dialog.py:591
+#: app/ui/login_dialog.py:174 app/ui/uge_dialog.py:591
 msgid ""
 "Impossible d'ouvrir le navigateur.\n"
 "\n"
@@ -1735,11 +1735,11 @@ msgstr "&Clear history"
 msgid "Action indisponible."
 msgstr "Action unavailable."
 
-#: app/ui/login_dialog.py:56
+#: app/ui/login_dialog.py:57
 msgid "Adresse du site"
 msgstr "Site address"
 
-#: app/ui/login_dialog.py:52
+#: app/ui/login_dialog.py:53
 msgid "Adresse du site :"
 msgstr "Site address:"
 
@@ -1759,7 +1759,7 @@ msgstr "Preview finished."
 msgid "Aperçu — {title}"
 msgstr "Preview — {title}"
 
-#: app/ui/login_dialog.py:117
+#: app/ui/login_dialog.py:119
 msgid ""
 "Aucun navigateur compatible trouvé.\n"
 "Installez Google Chrome, Microsoft Edge ou Brave."
@@ -1819,20 +1819,9 @@ msgstr "Comment (optional):"
 msgid "Confirmation"
 msgstr "Confirmation"
 
-#: app/ui/login_dialog.py:178
+#: app/ui/login_dialog.py:198
 msgid "Confirmer la suppression"
 msgstr "Confirm deletion"
-
-#: app/ui/login_dialog.py:38
-msgid ""
-"Connexion à un site. Saisissez l'adresse et connectez-vous dans le "
-"navigateur. Vos cookies seront conservés pour les prochains téléchargements."
-" Note : les contenus protégés par DRM (Netflix, Disney+, Prime Video) ne "
-"sont pas pris en charge."
-msgstr ""
-"Sign in to a site. Enter the address and sign in via the browser. Your "
-"cookies will be kept for future downloads. Note: DRM-protected content "
-"(Netflix, Disney+, Prime Video) is not supported."
 
 #: app/ui/contact_dialog.py:28
 msgid "Contacter le support — DownAccess"
@@ -1842,11 +1831,11 @@ msgstr "Contact support — DownAccess"
 msgid "Continuer"
 msgstr "Continue"
 
-#: app/ui/login_dialog.py:202
+#: app/ui/login_dialog.py:222
 msgid "Cookies de {domain} supprimés."
 msgstr "Cookies for {domain} deleted."
 
-#: app/ui/login_dialog.py:200
+#: app/ui/login_dialog.py:220
 msgid ""
 "Cookies de {domain} supprimés.\n"
 "Vous êtes déconnecté de ce site."
@@ -1890,20 +1879,6 @@ msgstr "In progress"
 msgid "En pause"
 msgstr "Paused"
 
-#: app/ui/login_dialog.py:68
-msgid ""
-"Entrez l'adresse du site et connectez-vous dans le navigateur.\n"
-"Votre vrai profil Chrome est utilisé : vos cookies seront conservés\n"
-"et réutilisés automatiquement pour les téléchargements.\n"
-"\n"
-"Note : les contenus protégés par DRM ne sont pas pris en charge."
-msgstr ""
-"Enter the site address and sign in through the browser.\n"
-"Your real Chrome profile is used: your cookies will be kept\n"
-"and reused automatically for downloads.\n"
-"\n"
-"Note: DRM-protected content is not supported."
-
 #: app/ui/playlist_dialog.py:54
 msgid "Entrée {n}"
 msgstr "Entry {n}"
@@ -1945,7 +1920,7 @@ msgstr "Preview error"
 msgid "Erreur de téléchargement"
 msgstr "Download error"
 
-#: app/ui/login_dialog.py:206
+#: app/ui/login_dialog.py:226
 msgid ""
 "Erreur lors de la suppression des cookies :\n"
 "{error}"
@@ -1993,7 +1968,7 @@ msgstr "Download history"
 msgid "Impossible d'extraire l'URL de streaming."
 msgstr "Unable to extract streaming URL."
 
-#: app/ui/login_dialog.py:171
+#: app/ui/login_dialog.py:191
 msgid "Impossible de déterminer le domaine du site."
 msgstr "Unable to determine the site domain."
 
@@ -2056,10 +2031,6 @@ msgstr ""
 "The 'Choose format manually' mode is only available for one URL at a time.\n"
 "\n"
 "Continue in 'Best automatic quality' mode?"
-
-#: app/ui/login_dialog.py:136
-msgid "Le navigateur"
-msgstr "The browser"
 
 #: app/ui/player_dialog.py:80 app/ui/player_dialog.py:86
 msgid "Lecteur audio"
@@ -2138,15 +2109,15 @@ msgstr "Sequential number (1, 2, 3...)"
 msgid "Numérotation des fichiers"
 msgstr "File numbering"
 
-#: app/ui/login_dialog.py:109
+#: app/ui/login_dialog.py:111
 msgid "Ouverture du navigateur…"
 msgstr "Opening browser…"
 
-#: app/ui/login_dialog.py:59
+#: app/ui/login_dialog.py:60
 msgid "Ouvrir"
 msgstr "Open"
 
-#: app/ui/login_dialog.py:59
+#: app/ui/login_dialog.py:60
 msgid "Ouvrir dans le navigateur"
 msgstr "Open in browser"
 
@@ -2230,7 +2201,7 @@ msgstr "Resolution"
 msgid "Réussi"
 msgstr "Success"
 
-#: app/ui/login_dialog.py:28
+#: app/ui/login_dialog.py:29
 msgid "Se connecter à un site — DownAccess"
 msgstr "Sign in to a site — DownAccess"
 
@@ -2254,15 +2225,15 @@ msgstr "Status"
 msgid "Suggestion de fonctionnalité"
 msgstr "Feature suggestion"
 
-#: app/ui/login_dialog.py:81
+#: app/ui/login_dialog.py:83
 msgid "Supprimer les cookies du site"
 msgstr "Delete site cookies"
 
-#: app/ui/login_dialog.py:82
+#: app/ui/login_dialog.py:84
 msgid "Supprimer les cookies du site actuellement ouvert"
 msgstr "Delete cookies of the currently open site"
 
-#: app/ui/login_dialog.py:177
+#: app/ui/login_dialog.py:197
 msgid ""
 "Supprimer tous les cookies de {domain} ?\n"
 "\n"
@@ -2403,22 +2374,6 @@ msgstr "{n:.0f} MB"
 #: app/ui/format_dialog.py:161
 msgid "{n:.1f} Go"
 msgstr "{n:.1f} GB"
-
-#: app/ui/login_dialog.py:138
-msgid ""
-"{name} est ouvert sur : {title}\n"
-"\n"
-"Connectez-vous dans {name}, puis fermez cette fenêtre.\n"
-"Vos cookies seront conservés pour les prochains téléchargements."
-msgstr ""
-"{name} is open on: {title}\n"
-"\n"
-"Sign in via {name}, then close this window.\n"
-"Your cookies will be kept for future downloads."
-
-#: app/ui/login_dialog.py:147
-msgid "{name} est ouvert. Connectez-vous puis fermez cette fenêtre."
-msgstr "{name} is open. Sign in then close this window."
 
 #: app/ui/format_dialog.py:166
 msgid "{n} o"
@@ -2568,3 +2523,97 @@ msgstr ""
 "video in the browser that just opened. Detected media will appear in this "
 "window. Note: DRM-protected content (Netflix, Disney+, Prime Video) is not "
 "supported."
+
+#: app/ui/login_dialog.py:39
+msgid ""
+"Connexion à un site. Saisissez l'adresse : un navigateur dédié à DownAccess "
+"s'ouvrira. Connectez-vous une fois ; vos cookies seront conservés pour les "
+"prochains téléchargements. Note : les contenus protégés par DRM (Netflix, "
+"Disney+, Prime Video) ne sont pas pris en charge."
+msgstr ""
+"Sign in to a website. Enter the address: a browser dedicated to DownAccess "
+"will open. Sign in once; your cookies will be kept for future downloads. "
+"Note: DRM-protected content (Netflix, Disney+, Prime Video) is not "
+"supported."
+
+#: app/ui/login_dialog.py:69
+msgid ""
+"Entrez l'adresse du site et connectez-vous dans le navigateur dédié à\n"
+"DownAccess qui va s'ouvrir. C'est un navigateur séparé de votre navigation\n"
+"habituelle : vous restez connecté une fois pour toutes, et vos cookies sont\n"
+"réutilisés automatiquement pour les téléchargements.\n"
+"\n"
+"Note : les contenus protégés par DRM ne sont pas pris en charge."
+msgstr ""
+"Enter the website address and sign in using the browser dedicated to\n"
+"DownAccess that will open. It is separate from your usual browsing:\n"
+"you stay signed in for good, and your cookies are reused automatically\n"
+"for downloads.\n"
+"\n"
+"Note: DRM-protected content is not supported."
+
+#: app/ui/login_dialog.py:149
+msgid ""
+"Impossible de démarrer le navigateur dédié à DownAccess.\n"
+"Fermez les éventuelles fenêtres DownAccess restées ouvertes, puis réessayez."
+msgstr ""
+"Could not start the browser dedicated to DownAccess.\n"
+"Close any DownAccess windows that may still be open, then try again."
+
+#: app/ui/login_dialog.py:158
+msgid ""
+"Le navigateur DownAccess est ouvert sur : {title}\n"
+"\n"
+"Connectez-vous, puis fermez cette fenêtre. Si vous êtes déjà connecté,\n"
+"il n'y a rien à faire. Vos cookies sont conservés pour les prochains téléchargements."
+msgstr ""
+"The DownAccess browser is open at: {title}\n"
+"\n"
+"Sign in, then close this window. If you are already signed in,\n"
+"there is nothing to do. Your cookies are kept for future downloads."
+
+#: app/ui/login_dialog.py:167
+msgid ""
+"Le navigateur DownAccess est ouvert. Connectez-vous puis fermez cette "
+"fenêtre."
+msgstr "The DownAccess browser is open. Sign in, then close this window."
+
+#~ msgid ""
+#~ "Connexion à un site. Saisissez l'adresse et connectez-vous dans le "
+#~ "navigateur. Vos cookies seront conservés pour les prochains téléchargements."
+#~ " Note : les contenus protégés par DRM (Netflix, Disney+, Prime Video) ne "
+#~ "sont pas pris en charge."
+#~ msgstr ""
+#~ "Sign in to a site. Enter the address and sign in via the browser. Your "
+#~ "cookies will be kept for future downloads. Note: DRM-protected content "
+#~ "(Netflix, Disney+, Prime Video) is not supported."
+
+#~ msgid ""
+#~ "Entrez l'adresse du site et connectez-vous dans le navigateur.\n"
+#~ "Votre vrai profil Chrome est utilisé : vos cookies seront conservés\n"
+#~ "et réutilisés automatiquement pour les téléchargements.\n"
+#~ "\n"
+#~ "Note : les contenus protégés par DRM ne sont pas pris en charge."
+#~ msgstr ""
+#~ "Enter the site address and sign in through the browser.\n"
+#~ "Your real Chrome profile is used: your cookies will be kept\n"
+#~ "and reused automatically for downloads.\n"
+#~ "\n"
+#~ "Note: DRM-protected content is not supported."
+
+#~ msgid "Le navigateur"
+#~ msgstr "The browser"
+
+#~ msgid ""
+#~ "{name} est ouvert sur : {title}\n"
+#~ "\n"
+#~ "Connectez-vous dans {name}, puis fermez cette fenêtre.\n"
+#~ "Vos cookies seront conservés pour les prochains téléchargements."
+#~ msgstr ""
+#~ "{name} is open on: {title}\n"
+#~ "\n"
+#~ "Sign in via {name}, then close this window.\n"
+#~ "Your cookies will be kept for future downloads."
+
+#~ msgid "{name} est ouvert. Connectez-vous puis fermez cette fenêtre."
+#~ msgstr "{name} is open. Sign in then close this window."

@@ -5,8 +5,9 @@ Utilise le mécanisme intégré de yt-dlp `cookiesfrombrowser` pour
 lire les cookies depuis Chrome, Edge ou Brave.
 """
 import logging
+import os
 
-from app.core.browser import find_browser, browser_name
+from app.core.browser import browser_name, downaccess_profile_dir, find_browser
 
 _log = logging.getLogger("downaccess.cookies")
 
@@ -30,5 +31,15 @@ def apply_cookies(opts: dict) -> None:
 
     name = browser_name(path)
     browser_id = _YTDLP_BROWSER.get(name, "chrome")
-    opts["cookiesfrombrowser"] = (browser_id,)
-    _log.debug("Cookies %s configurés pour yt-dlp", name)
+
+    # Profil dédié DownAccess : l'utilisateur s'y connecte via le dialogue de
+    # connexion. yt-dlp y relit les cookies (chemin du dossier "Default" ;
+    # le "Local State" du parent fournit la clé de déchiffrement).
+    profile = os.path.join(downaccess_profile_dir(), "Default")
+    if os.path.isdir(profile):
+        opts["cookiesfrombrowser"] = (browser_id, profile)
+        _log.debug("Cookies depuis le profil dédié DownAccess (%s)", name)
+    else:
+        # Pas encore de profil dédié : repli sur le profil système du navigateur.
+        opts["cookiesfrombrowser"] = (browser_id,)
+        _log.debug("Cookies depuis le profil système %s (profil dédié absent)", name)
