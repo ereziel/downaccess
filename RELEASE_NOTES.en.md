@@ -1,11 +1,15 @@
-## DownAccess 0.1.17
+## DownAccess 0.1.18
 
-### Fixes
+### What's new
 
-- **More reliable website sign-in.** The "Sign in to a website" feature now opens a browser dedicated to DownAccess, separate from your usual browsing. It works even when your browser is already open — the error that could appear is gone. You stay signed in: signing in once is enough, and your credentials are kept for your next downloads.
+- **Download videos that require signing in.** Some videos — age-restricted, private, or reserved for a channel's members — are only available once you're signed in to your account. Now, when DownAccess runs into this, it offers to sign you in **with a single click**: a window opens on the site, you sign in, and the download **resumes on its own**. You only sign in once — DownAccess remembers it for the next videos from the same site.
+
+### Improvements
+
+- **More reliable website sign-in**, including with recent versions of your browser.
+- **Clearer messages** when a video requires signing in: no more technical jargon, DownAccess simply tells you what to do.
+- **Paste an address with the keyboard**: the Ctrl+V shortcut now works directly from the home screen to add a link.
 
 ### Note
-
-If you had already signed in to a site with a previous version, sign in once again in this new dedicated browser.
 
 DRM-protected content (Netflix, Disney+, Prime Video, etc.) is not supported.

@@ -49,6 +49,8 @@ from app.ui.search_dialog import SearchDialog, SearchResultsDialog
 from app.ui.settings_dialog import SettingsDialog
 from app.ui.uge_dialog import UGEDialog
 from app.ui.login_dialog import LoginDialog
+from app.ui.login_required_dialog import LoginRequiredDialog
+from app.ui.guided_login_dialog import GuidedLoginDialog
 from app.ui.update_dialog import UpdateDialog
 from app.ui.contact_dialog import ContactDialog
 from app.ui.history_dialog import HistoryDialog
@@ -250,7 +252,8 @@ class MainWindow(wx.Frame):
         if self.settings.get("open_folder_when_done") and self._all_done():
             self._open_download_folder()
 
-    def _on_dl_error(self, download_id: str, message: str) -> None:
+    def _on_dl_error(self, download_id: str, message: str,
+                     login_required: bool = False) -> None:
         self.download_list.error_item(download_id)
         self._progress.pop(download_id, None)
         if self._gauge_dl_id == download_id:
@@ -258,11 +261,20 @@ class MainWindow(wx.Frame):
         self.set_status(_("Erreur lors du téléchargement."))
         dl_data = self._dl_data.get(download_id, {})
         self._log_history(dl_data, status="failed", error=message)
+
+        # Échec faute de connexion → parcours de connexion guidée.
+        if login_required:
+            if dl_data.get("use_cookies"):
+                # Connexion déjà tentée et insuffisante (pas le bon compte,
+                # ou contenu nécessitant un abonnement) → message final.
+                self._login_failed_after_attempt(download_id)
+            else:
+                self._on_login_required(download_id)
+            return
+
         dlg = ErrorDialog(self, message)
         dlg.ShowModal()
-        if dlg.wants_retry_cookies():
-            self._retry_with_cookies(download_id)
-        elif dlg.wants_report():
+        if dlg.wants_report():
             self._start_error_report(download_id, message)
         dlg.Destroy()
 
@@ -342,11 +354,101 @@ class MainWindow(wx.Frame):
             "use_cookies": True,
         }
         self.set_count(self.download_list.count())
-        self.set_status(_("Relance avec les cookies du navigateur..."))
-        speech.speak(_("Relance avec les cookies du navigateur."))
+        self.set_status(_("Reprise du téléchargement après connexion..."))
+        speech.speak(_("Reprise du téléchargement."))
+
+    # ------------------------------------------------------------------
+    # Parcours de connexion guidée (échec faute de connexion au site)
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _site_label(url: str) -> str:
+        """Nom lisible du site à partir de l'URL (ex: 'YouTube')."""
+        host = (urlparse(url).hostname or "").lower()
+        if host.startswith("www."):
+            host = host[4:]
+        known = {
+            "youtube.com": "YouTube", "youtu.be": "YouTube",
+            "vimeo.com": "Vimeo", "dailymotion.com": "Dailymotion",
+            "twitch.tv": "Twitch", "facebook.com": "Facebook",
+            "instagram.com": "Instagram", "tiktok.com": "TikTok",
+            "twitter.com": "Twitter", "x.com": "X",
+        }
+        if host in known:
+            return known[host]
+        # Repli : domaine sans le TLD, première lettre en majuscule.
+        base = host.split(".")[0] if host else ""
+        return base.capitalize() if base else _("ce site")
+
+    def _on_login_required(self, download_id: str) -> None:
+        """Affiche le dialogue « Connexion nécessaire » puis, si l'utilisateur
+        accepte, lance la connexion guidée."""
+        data = self._dl_data.get(download_id, {})
+        url = data.get("url", "")
+        site = self._site_label(url)
+        speech.speak(_("Connexion nécessaire pour télécharger cette vidéo {site}.").format(site=site))
+        dlg = LoginRequiredDialog(self, site)
+        dlg.ShowModal()
+        wants = dlg.wants_login()
+        dlg.Destroy()
+        if wants:
+            self._open_guided_login(download_id)
+        else:
+            wx.CallAfter(self.download_list.SetFocus)
+
+    def _open_guided_login(self, download_id: str) -> None:
+        """Ouvre le dialogue de connexion guidée (minimal) sur le site, puis
+        relance le téléchargement automatiquement une fois connecté."""
+        data = self._dl_data.get(download_id, {})
+        url = data.get("url", "")
+        parsed = urlparse(url)
+        login_url = f"{parsed.scheme}://{parsed.hostname}" if parsed.hostname else url
+        site = self._site_label(url)
+        dlg = GuidedLoginDialog(
+            self,
+            site_url=login_url,
+            site_name=site,
+            on_done=lambda ok, did=download_id, u=url: self._guided_login_done(ok, did, u),
+        )
+        dlg.Show()
+
+    def _guided_login_done(self, success: bool, download_id: str, url: str) -> None:
+        """Callback de fin de connexion guidée : relance le téléchargement si
+        la connexion a réussi, sinon redonne le focus à la liste."""
+        if success:
+            self._propose_remember_cookie_site(url)
+            self._retry_with_cookies(download_id)
+        else:
+            wx.CallAfter(self.download_list.SetFocus)
+
+    def _login_failed_after_attempt(self, download_id: str) -> None:
+        """La connexion a été faite mais le téléchargement échoue toujours :
+        mauvais compte, ou contenu nécessitant un abonnement/des droits."""
+        data = self._dl_data.get(download_id, {})
+        site = self._site_label(data.get("url", ""))
+        speech.speak(_("La connexion n'a pas suffi pour télécharger cette vidéo."))
+        dlg = wx.MessageDialog(
+            self,
+            _(
+                "Vous êtes connecté, mais cette vidéo {site} n'a pas pu être "
+                "téléchargée.\n\n"
+                "Soit vous n'êtes pas connecté au bon compte, soit ce contenu "
+                "nécessite un abonnement ou des droits que votre compte n'a pas.\n\n"
+                "Voulez-vous réessayer de vous connecter ?"
+            ).format(site=site),
+            _("Connexion insuffisante"),
+            wx.YES_NO | wx.ICON_WARNING,
+        )
+        retry = dlg.ShowModal() == wx.ID_YES
+        dlg.Destroy()
+        if retry:
+            self._open_guided_login(download_id)
+        else:
+            wx.CallAfter(self.download_list.SetFocus)
 
     def _propose_remember_cookie_site(self, url: str) -> None:
-        """Après un retry cookies réussi, propose de mémoriser le site."""
+        """Après une connexion réussie, mémorise le site silencieusement :
+        les prochaines vidéos du même site passeront direct, sans dialogue."""
         if not url:
             return
         host = urlparse(url).hostname or ""
@@ -355,23 +457,19 @@ class MainWindow(wx.Frame):
         host = host.lower()
         if not host:
             return
-        # Vérifier si le site est déjà mémorisé
         sites = self.settings.get("cookie_sites", [])
         if host in sites:
             return
-        dlg = wx.MessageDialog(
-            self,
-            _("Le téléchargement avec cookies a réussi pour {host}.\n\nVoulez-vous toujours utiliser les cookies du navigateur pour ce site ?").format(host=host),
-            _("Mémoriser les cookies pour ce site"),
-            wx.YES_NO | wx.ICON_QUESTION,
+        sites.append(host)
+        self.settings["cookie_sites"] = sites
+        from app.core import settings as cfg
+        cfg.save(self.settings)
+        site = self._site_label(url)
+        self.set_status(_("Connexion à {site} mémorisée.").format(site=site))
+        speech.speak(
+            _("DownAccess se souviendra de votre connexion à {site} pour "
+              "les prochaines vidéos.").format(site=site)
         )
-        if dlg.ShowModal() == wx.ID_YES:
-            sites.append(host)
-            self.settings["cookie_sites"] = sites
-            from app.core import settings as cfg
-            cfg.save(self.settings)
-            self.set_status(_("Cookies mémorisés pour {host}.").format(host=host))
-        dlg.Destroy()
 
     def _on_dl_warning(self, download_id: str, message: str) -> None:
         self.set_status(_("Téléchargement terminé avec avertissement."))
@@ -728,6 +826,10 @@ class MainWindow(wx.Frame):
             style=wx.TE_MULTILINE | wx.TE_READONLY | wx.BORDER_NONE,
         )
         self.lbl_empty.SetBackgroundColour(panel.GetBackgroundColour())
+        # Le TextCtrl lecture seule capte Ctrl+V nativement (collage sans effet)
+        # et empêche l'accélérateur global. On redirige Ctrl+V vers le collage
+        # d'URL pour que la zone d'aide reste utilisable au clavier (NVDA).
+        self.lbl_empty.Bind(wx.EVT_CHAR_HOOK, self._on_empty_char_hook)
         sizer.Add(self.lbl_empty, 1, wx.EXPAND | wx.ALL, 24)
 
         self.download_list = DownloadList(panel)
@@ -918,10 +1020,12 @@ class MainWindow(wx.Frame):
         if not self.settings.get("_login_intro_shown"):
             wx.MessageBox(
                 _(
-                    "Cette fonction ouvre votre navigateur pour vous connecter à un site.\n\n"
-                    "Vos cookies de connexion seront sauvegardés dans votre navigateur.\n"
-                    "Si un téléchargement échoue, DownAccess vous proposera automatiquement\n"
-                    "de réessayer avec les cookies du navigateur.\n\n"
+                    "Cette fonction ouvre un navigateur dédié à DownAccess pour vous\n"
+                    "connecter à un site (par exemple YouTube).\n\n"
+                    "Vous restez connecté une fois pour toutes : les vidéos réservées aux\n"
+                    "personnes connectées pourront alors être téléchargées. Si un\n"
+                    "téléchargement nécessite une connexion, DownAccess vous proposera\n"
+                    "aussi de vous connecter au moment voulu.\n\n"
                     "Note : les contenus protégés par DRM (Netflix, Disney+, Prime Video…) "
                     "ne sont pas pris en charge."
                 ),
@@ -1296,6 +1400,14 @@ class MainWindow(wx.Frame):
         else:
             for url in picked:
                 self._enqueue_url(url, fmt_choice, subtitles_override=subs)
+
+    def _on_empty_char_hook(self, event) -> None:
+        """Redirige Ctrl+V depuis la zone d'aide (TextCtrl lecture seule) vers le
+        collage d'URL — sinon le contrôle natif l'avale sans rien faire."""
+        if event.ControlDown() and not event.AltDown() and event.GetKeyCode() == ord("V"):
+            self._on_paste_url(None)
+            return  # ne pas Skip : le TextCtrl ne traite pas la touche
+        event.Skip()
 
     def _on_paste_url(self, _event) -> None:
         """Ctrl+V global : colle l'URL du presse-papiers sans ouvrir de dialogue."""

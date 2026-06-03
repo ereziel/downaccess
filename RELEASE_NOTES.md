@@ -1,11 +1,15 @@
-## DownAccess 0.1.17
+## DownAccess 0.1.18
 
-### Corrections
+### Nouveautés
 
-- **Connexion à un site plus fiable.** La fonction « Se connecter à un site » ouvre désormais un navigateur dédié à DownAccess, séparé de votre navigation habituelle. Elle fonctionne même lorsque votre navigateur est déjà ouvert — l'erreur qui pouvait apparaître a disparu. Vous restez connecté : une seule connexion suffit, et vos identifiants sont conservés pour vos prochains téléchargements.
+- **Téléchargez les vidéos qui demandent une connexion.** Certaines vidéos — réservées aux adultes, privées, ou réservées aux membres d'une chaîne — ne sont accessibles qu'une fois connecté à votre compte. Désormais, quand DownAccess rencontre ce cas, il vous propose de vous connecter **en un clic** : une fenêtre s'ouvre sur le site, vous vous connectez, et le téléchargement **reprend tout seul**. Vous ne vous connectez qu'une seule fois — DownAccess s'en souvient pour les prochaines vidéos du même site.
+
+### Améliorations
+
+- **Connexion aux sites plus fiable**, y compris avec les versions récentes de votre navigateur.
+- **Messages plus clairs** lorsqu'une vidéo nécessite une connexion : plus de jargon technique, DownAccess vous explique simplement quoi faire.
+- **Coller une adresse au clavier** : la touche Ctrl+V fonctionne maintenant directement depuis l'écran d'accueil pour ajouter un lien.
 
 ### Note
-
-Si vous vous étiez déjà connecté à un site avec une version précédente, reconnectez-vous une fois dans ce nouveau navigateur dédié.
 
 Le contenu protégé par DRM (Netflix, Disney+, Prime Video, etc.) n'est pas pris en charge.
