@@ -1,8 +1,8 @@
-## DownAccess 0.1.19
+## DownAccess 0.1.20
 
 ### Improvements
 
-- **Downloads that better withstand connection drops.** If your Internet connection hiccups during a download — a brief drop, a temporary slowdown — DownAccess no longer fails: it waits and resumes on its own right where it left off. Downloads now make it to the end even on an unstable connection.
+- Internal update.
 
 ### Note
 

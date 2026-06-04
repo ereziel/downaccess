@@ -1,8 +1,8 @@
-## DownAccess 0.1.19
+## DownAccess 0.1.20
 
 ### Améliorations
 
-- **Téléchargements plus résistants aux coupures de connexion.** Si votre connexion Internet a un raté pendant un téléchargement — une micro-coupure, un ralentissement passager — DownAccess ne s'arrête plus en erreur : il patiente et reprend tout seul là où il en était. Les téléchargements vont jusqu'au bout même sur une connexion instable.
+- Mise à jour interne.
 
 ### Note
 
