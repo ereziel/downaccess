@@ -306,6 +306,13 @@ class Downloader:
             "progress_hooks": [self._make_hook(download_id, on_progress, stop_event, pause_event)],
             "js_runtimes":    {"node": {}},
             "concurrent_fragment_downloads": fragments if fragments > 1 else 1,
+            # Résilience réseau : sur une connexion instable, un stall doit durer
+            # 30 s avant de compter comme timeout, et yt-dlp reprend (depuis le
+            # .part) jusqu'à 20 fois avant d'abandonner. Évite qu'un « Read timed
+            # out » transitoire remonte comme un échec fatal.
+            "socket_timeout":   30,
+            "retries":          20,
+            "fragment_retries": 20,
         }
 
         if verbose and log_buf is not None:
