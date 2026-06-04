@@ -252,6 +252,21 @@ class MainWindow(wx.Frame):
         if self.settings.get("open_folder_when_done") and self._all_done():
             self._open_download_folder()
 
+    def _on_diagnostic_recovered(self, download_id: str, filepath: str) -> None:
+        """La relance de diagnostic (lancée pour le rapport d'erreur) a finalement
+        réussi en reprenant le fichier partiel : l'échec initial était transitoire.
+        On rétablit l'item en « terminé » et on signale que le fichier est bien là."""
+        self.download_list.complete_item(download_id)
+        self._progress.pop(download_id, None)
+        data = self._dl_data.get(download_id)
+        if data is not None and filepath:
+            data["filepath"] = filepath
+        self._log_history(self._dl_data.get(download_id, {}), status="success")
+        self.set_status(_("Le téléchargement a finalement réussi : le fichier "
+                          "est dans votre dossier de téléchargements."))
+        speech.speak(_("Le téléchargement a finalement réussi. Le fichier est "
+                       "dans votre dossier de téléchargements."))
+
     def _on_dl_error(self, download_id: str, message: str,
                      login_required: bool = False) -> None:
         self.download_list.error_item(download_id)
@@ -481,6 +496,47 @@ class MainWindow(wx.Frame):
         dlg.Destroy()
 
     def _start_error_report(self, download_id: str, error_message: str) -> None:
+        """Avant de laisser l'utilisateur rédiger un rapport, vérifie que l'app
+        est à jour : si une version plus récente existe, le bug est peut-être
+        déjà corrigé — on bloque et on propose la mise à jour, sans faire perdre
+        de temps à rédiger. Si GitHub est injoignable, on laisse passer (ne pas
+        perdre le rapport d'un utilisateur hors-ligne)."""
+        self.set_status(_("Vérification de la version…"))
+        speech.speak(_("Vérification de la version."))
+
+        def _on_checked(status: str, info: str, _notes: str) -> None:
+            if status == "update_available":
+                self._report_blocked_outdated(info)
+            else:
+                self._open_report_form(download_id, error_message)
+
+        app_updater.check_for_update(
+            on_done=lambda s, i, n: wx.CallAfter(_on_checked, s, i, n)
+        )
+
+    def _report_blocked_outdated(self, new_version: str) -> None:
+        """Empêche l'envoi d'un rapport tant que l'app n'est pas à jour."""
+        self.set_status(_("Mise à jour requise avant d'envoyer un rapport."))
+        dlg = wx.MessageDialog(
+            self,
+            _(
+                "Une version plus récente de DownAccess est disponible "
+                "(version {version}).\n\n"
+                "Votre problème est peut-être déjà corrigé. Merci de mettre à "
+                "jour l'application, puis de réessayer si le problème persiste.\n\n"
+                "Voulez-vous mettre à jour maintenant ?"
+            ).format(version=new_version),
+            _("Mise à jour requise"),
+            wx.YES_NO | wx.ICON_INFORMATION,
+        )
+        do_update = dlg.ShowModal() == wx.ID_YES
+        dlg.Destroy()
+        if do_update:
+            self._on_update_app(None)
+        else:
+            wx.CallAfter(self.download_list.SetFocus)
+
+    def _open_report_form(self, download_id: str, error_message: str) -> None:
         dl_data = self._dl_data.get(download_id, {})
         url         = dl_data.get("url", "")
         site        = dl_data.get("site", "")
@@ -502,12 +558,18 @@ class MainWindow(wx.Frame):
 
             def _run_verbose():
                 log = []
+                recovered = {"ok": False, "filepath": ""}
+
+                def _diag_progress(p):
+                    if p.status == "finished" and p.filepath:
+                        recovered["filepath"] = p.filepath
+
                 try:
                     downloader = Downloader(self.settings)
                     downloader.download(
                         download_id="diagnostic",
                         url=url,
-                        on_progress=lambda _p: None,
+                        on_progress=_diag_progress,
                         stop_event=stop_evt,
                         pause_event=pause_evt,
                         format_spec=format_spec,
@@ -517,13 +579,31 @@ class MainWindow(wx.Frame):
                         verbose=True,
                         on_verbose_log=lambda txt: log.append(txt),
                     )
+                    # La relance de diagnostic reprend le .part laissé par l'échec.
+                    # Si elle aboutit sans lever d'erreur, c'est que l'échec
+                    # initial était transitoire (connexion instable) et que le
+                    # fichier est bien présent → on rétablit l'item dans l'UI.
+                    recovered["ok"] = True
                 except Exception:
                     pass
-                verbose_log_holder.append(log[0] if log else "")
+
+                verbose = log[0] if log else ""
+                if recovered["ok"]:
+                    verbose = (
+                        "[DownAccess] La relance de diagnostic a repris et "
+                        "terminé le téléchargement : l'erreur initiale était "
+                        "transitoire (connexion instable).\n\n" + verbose
+                    )
+                    wx.CallAfter(self._on_diagnostic_recovered,
+                                 download_id, recovered["filepath"])
+                verbose_log_holder.append(verbose)
                 wx.CallAfter(_send_report)
 
             def _send_report():
                 import sys
+                import platform as _plat
+                import locale as _locale
+                import shutil as _shutil
                 import subprocess as _sp
 
                 # Préférences filtrées (sans données sensibles)
@@ -553,12 +633,45 @@ class MainWindow(wx.Frame):
                     ram_available_mb = -1
                     ram_total_mb     = -1
 
+                # Édition Windows (Pro / Famille…) — best effort
+                try:
+                    os_edition = _plat.win32_edition() or "inconnue"
+                except Exception:
+                    os_edition = "inconnue"
+
+                # Espace disque libre sur le dossier de téléchargement (cause
+                # classique d'échec : disque plein)
+                try:
+                    usage = _shutil.disk_usage(self.settings.get("download_folder", "."))
+                    disk_free_gb  = round(usage.free  / 1_073_741_824, 1)
+                    disk_total_gb = round(usage.total / 1_073_741_824, 1)
+                except Exception:
+                    disk_free_gb  = -1
+                    disk_total_gb = -1
+
+                # Langue / locale du système
+                try:
+                    sys_locale = ".".join(filter(None, _locale.getlocale())) or "inconnue"
+                except Exception:
+                    sys_locale = "inconnue"
+
                 system_info = {
-                    "python":          sys.version,
-                    "wxpython":        wx.version(),
-                    "ffmpeg":          _ffmpeg_ver(),
+                    "python":           sys.version,
+                    "wxpython":         wx.version(),
+                    "ffmpeg":           _ffmpeg_ver(),
                     "ram_available_mb": ram_available_mb,
                     "ram_total_mb":     ram_total_mb,
+                    "os_platform":      _plat.platform(),
+                    "os_edition":       os_edition,
+                    "architecture":     _plat.machine(),
+                    "cpu":              _plat.processor() or "inconnu",
+                    "cpu_count":        os.cpu_count() or -1,
+                    "disk_free_gb":     disk_free_gb,
+                    "disk_total_gb":    disk_total_gb,
+                    "system_locale":    sys_locale,
+                    "app_language":     self.settings.get("language", "auto"),
+                    "screen_reader":    speech.active_screen_reader(),
+                    "frozen":           bool(getattr(sys, "frozen", False)),
                 }
 
                 report = error_reporter.build_report(
