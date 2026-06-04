@@ -4,6 +4,7 @@ import re
 import subprocess
 import sys
 import time
+import uuid
 from urllib.parse import urlparse
 
 import wx
@@ -33,6 +34,7 @@ from app.core import settings as cfg
 from app.core import speech
 from app.core import updater
 from app.core import app_updater
+from app.core import announce
 from app.core.downloader import DownloadInfo, DownloadProgress
 from app.core.queue_manager import QueueManager
 from app.ui.add_url_dialog import AddUrlDialog, FORMAT_MANUAL
@@ -1681,6 +1683,42 @@ class MainWindow(wx.Frame):
             if status == "update_available":
                 wx.CallAfter(self._on_app_update_checked, status, info, notes)
         app_updater.check_for_update(on_done=_on_done)
+
+    def check_announcement_at_startup(self) -> None:
+        """Vérification silencieuse d'une annonce serveur au démarrage."""
+        install_id = self.settings.get("install_id", "")
+        if not install_id:
+            install_id = uuid.uuid4().hex
+            self.settings["install_id"] = install_id
+            cfg.save(self.settings)
+        announce.check_announcement(
+            install_id,
+            on_done=lambda ann: wx.CallAfter(self._on_announcement_received, ann),
+        )
+
+    def _on_announcement_received(self, ann: dict | None) -> None:
+        if not ann:
+            return
+        title = ann.get("title") or APP_NAME
+        body = ann.get("body") or ""
+        if not body:
+            return
+        ann_id = ann.get("id") or ""
+        mode = ann.get("mode") or "every"
+
+        if mode == "once" and ann_id in self.settings.get("seen_announcements", []):
+            return
+
+        icon = wx.ICON_WARNING if ann.get("style") == "warning" else wx.ICON_INFORMATION
+        wx.MessageBox(body, title, wx.OK | icon, self)
+
+        if mode == "once" and ann_id:
+            seen = self.settings.setdefault("seen_announcements", [])
+            if ann_id not in seen:
+                seen.append(ann_id)
+                cfg.save(self.settings)
+        if ann_id:
+            announce.ack_announcement(self.settings.get("install_id", ""), ann_id)
 
     def _on_update_ytdlp(self, _event) -> None:
         self.set_status(_("Vérification de la version yt-dlp…"))
