@@ -16,6 +16,15 @@ if not FFMPEG_EXE.exists():
         "Lance d'abord : python scripts/update_ffmpeg.py"
     )
 
+# Moteur JavaScript (QuickJS-ng) requis par yt-dlp pour resoudre le challenge
+# de signature YouTube (voir scripts/update_jsruntime.py).
+QJS_EXE = Path('assets/qjs.exe')
+if not QJS_EXE.exists():
+    raise FileNotFoundError(
+        f"{QJS_EXE} introuvable.\n"
+        "Lance d'abord : python scripts/update_jsruntime.py"
+    )
+
 # Catalogues de traduction (gettext .po pour chaque langue supportee).
 # Le runtime app/core/i18n.py les charge via polib depuis _internal/locales/.
 LOCALE_DATAS = []
@@ -28,6 +37,7 @@ a = Analysis(
     pathex=['.'],
     binaries=[
         (str(FFMPEG_EXE), '.'),   # → _internal/ffmpeg.exe dans le bundle
+        (str(QJS_EXE), '.'),      # → _internal/qjs.exe dans le bundle
     ],
     datas=LOCALE_DATAS,
     hiddenimports=[

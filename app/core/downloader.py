@@ -13,6 +13,7 @@ import yt_dlp
 
 from app.core.ffmpeg_utils import get_ffmpeg_path
 from app.core.i18n import _translate as _
+from app.core.jsruntime_utils import get_js_runtimes_opt
 
 _log = logging.getLogger("downaccess.downloader")
 
@@ -218,7 +219,7 @@ class Downloader:
             "no_warnings": True,
             "extract_flat": True,
             "skip_download": True,
-            "js_runtimes": {"node": {}},
+            "js_runtimes": get_js_runtimes_opt(),
         }
         if self._settings.get("proxy_http"):
             flat_opts["proxy"] = self._settings["proxy_http"]
@@ -375,7 +376,7 @@ class Downloader:
             "no_warnings":    not verbose,
             "verbose":        verbose,
             "progress_hooks": [self._make_hook(download_id, on_progress, stop_event, pause_event)],
-            "js_runtimes":    {"node": {}},
+            "js_runtimes":    get_js_runtimes_opt(),
             "concurrent_fragment_downloads": fragments if fragments > 1 else 1,
             # Résilience réseau : sur une connexion instable, un stall doit durer
             # 30 s avant de compter comme timeout, et yt-dlp reprend (depuis le
