@@ -30,21 +30,30 @@ class GuidedLoginDialog(wx.Dialog):
     confirmation, puis appelle `on_done(success: bool)`."""
 
     def __init__(self, parent, site_url: str, site_name: str,
-                 on_done: Callable[[bool], None]):
+                 on_done: Callable[[bool], None],
+                 title: str | None = None,
+                 intro: str | None = None,
+                 action_text: str | None = None):
+        # title / intro / action_text : surcharges optionnelles du texte (ex. le
+        # cas playlist où il s'agit d'accepter le consentement, pas de se
+        # connecter à un compte). Par défaut : le wording « connexion ».
         super().__init__(
             parent,
-            title=_("Connexion à {site}").format(site=site_name),
+            title=title or _("Connexion à {site}").format(site=site_name),
             style=wx.DEFAULT_DIALOG_STYLE,
             size=(480, 240),
         )
         self._site_url = site_url
         self._site_name = site_name
         self._on_done = on_done
+        self._intro = intro
+        self._action_text = action_text
         self._page = None
         self._done_fired = False
         self._build_ui()
         self.Centre()
         speech.speak(
+            self._action_text or
             _("Connectez-vous à {site} dans le navigateur, puis cliquez sur "
               "« J'ai terminé ».").format(site=site_name)
         )
@@ -53,7 +62,7 @@ class GuidedLoginDialog(wx.Dialog):
     def _build_ui(self) -> None:
         sizer = wx.BoxSizer(wx.VERTICAL)
 
-        msg = _(
+        msg = self._intro or _(
             "DownAccess ouvre {site} dans son navigateur.\n\n"
             "Connectez-vous à votre compte, puis revenez ici et cliquez sur "
             "« J'ai terminé » : le téléchargement reprendra automatiquement.\n\n"
@@ -115,6 +124,7 @@ class GuidedLoginDialog(wx.Dialog):
         self._page = page
         self.btn_done.Enable()
         self._set_status(
+            self._action_text or
             _("Connectez-vous à {site} dans la fenêtre du navigateur, puis "
               "cliquez sur « J'ai terminé ».").format(site=self._site_name)
         )

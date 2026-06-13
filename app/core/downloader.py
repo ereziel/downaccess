@@ -86,6 +86,8 @@ class DownloadInfo:
     raw_formats: list = field(default_factory=list)
     is_playlist: bool = False
     playlist_entries: list = field(default_factory=list)
+    playlist_count: int = 0   # total réel annoncé par YouTube (peut dépasser
+                              # len(playlist_entries) si yt-dlp est plafonné)
 
 
 @dataclass
@@ -271,6 +273,7 @@ class Downloader:
                     site=info.get("extractor_key") or "—",
                     is_playlist=True,
                     playlist_entries=entries,
+                    playlist_count=int(info.get("playlist_count") or 0),
                 )
 
             # Vidéo unique — deuxième passe pour avoir les formats détaillés

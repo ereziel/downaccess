@@ -5,6 +5,7 @@ import subprocess
 import sys
 import time
 import uuid
+from pathlib import Path
 from urllib.parse import urlparse
 
 import wx
@@ -32,6 +33,7 @@ def _classify_search_entry(entry: dict, site_prefix: str) -> str:
 
 from app.core import settings as cfg
 from app.core import speech
+from app.core import i18n
 from app.core import updater
 from app.core import app_updater
 from app.core import announce
@@ -94,6 +96,16 @@ ID_CONTACT      = wx.NewIdRef()
 ID_GITHUB       = wx.NewIdRef()
 ID_IMPORT_LIST  = wx.NewIdRef()
 ID_HISTORY      = wx.NewIdRef()
+ID_USER_GUIDE   = wx.NewIdRef()
+
+
+def _docs_dir() -> Path:
+    """Dossier des guides HTML (embarques), en dev comme en frozen."""
+    if getattr(sys, "frozen", False):
+        base = Path(sys._MEIPASS)
+    else:
+        base = Path(__file__).resolve().parents[2]
+    return base / "docs"
 
 
 class _AppDownloadDialog(wx.Frame):
@@ -711,17 +723,173 @@ class MainWindow(wx.Frame):
         report_dlg.Destroy()
 
     def _on_dl_playlist(self, info: DownloadInfo) -> None:
-        """Playlist détectée — supprimer l'item placeholder et montrer le dialogue."""
+        """Playlist détectée — supprimer l'item placeholder puis, selon le cas,
+        récupérer la liste complète via le navigateur (si yt-dlp est plafonné)
+        ou afficher directement le dialogue de sélection."""
         self.download_list.remove_item(info.download_id)
         self._dl_data.pop(info.download_id, None)
         self.set_count(self.download_list.count())
 
+        # Plafonné = YouTube annonce plus de vidéos que yt-dlp n'en a extraites.
+        capped = info.playlist_count > len(info.playlist_entries)
+        host = (urlparse(info.url).hostname or "").lower()
+        is_youtube = host.endswith("youtube.com") or host.endswith("youtu.be")
+
+        total = info.playlist_count if capped else len(info.playlist_entries)
         speech.speak(
             _("Playlist détectée : {title}. {count} vidéos.").format(
-                title=info.title, count=len(info.playlist_entries)
+                title=info.title, count=total
             )
         )
 
+        if capped and is_youtube:
+            self._maybe_harvest_full_playlist(info)
+        else:
+            self._show_playlist_dialog(info)
+
+    def _maybe_harvest_full_playlist(self, info: DownloadInfo) -> None:
+        """Playlist plafonnée par YouTube : proposer (1ʳᵉ fois) puis, si l'option
+        est mémorisée, récupérer automatiquement la liste complète via navigateur."""
+        if self.settings.get("playlist_full_harvest_auto"):
+            self._start_playlist_harvest(info)
+            return
+
+        dlg = wx.RichMessageDialog(
+            self,
+            _("Cette playlist contient {total} vidéos, mais YouTube n'en rend "
+              "que {got} accessibles directement.\n\n"
+              "Voulez-vous récupérer la liste complète via le navigateur ? "
+              "Cela peut prendre un moment pour les grandes playlists.").format(
+                total=info.playlist_count, got=len(info.playlist_entries)),
+            _("Playlist incomplète"),
+            wx.YES_NO | wx.ICON_QUESTION,
+        )
+        dlg.SetYesNoLabels(_("Récupérer la liste complète"),
+                           _("Garder les premières"))
+        dlg.ShowCheckBox(_("Toujours récupérer automatiquement (ne plus demander)"))
+        answer = dlg.ShowModal()
+        remember = dlg.IsCheckBoxChecked()
+        dlg.Destroy()
+
+        if answer == wx.ID_YES:
+            if remember:
+                self.settings["playlist_full_harvest_auto"] = True
+                cfg.save(self.settings)
+            self._start_playlist_harvest(info)
+        else:
+            self._show_playlist_dialog(info)
+
+    def _start_playlist_harvest(self, info: DownloadInfo) -> None:
+        """Lance la récolte navigateur dans un thread, avec dialogue de
+        progression accessible. Le résultat repasse par `_on_harvest_done`."""
+        import threading
+
+        from app.ui.playlist_harvest_dialog import PlaylistHarvestDialog
+
+        self._harvest_stop = False
+        self._harvest_dlg = PlaylistHarvestDialog(
+            self, info.title, info.playlist_count,
+            on_cancel=lambda: setattr(self, "_harvest_stop", True),
+        )
+        self._harvest_dlg.Show()
+
+        def work() -> None:
+            from app.core import browser
+            try:
+                entries = browser.harvest_youtube_playlist(
+                    info.url,
+                    on_progress=lambda n: wx.CallAfter(self._on_harvest_progress, n),
+                    should_stop=lambda: self._harvest_stop,
+                )
+                wx.CallAfter(self._on_harvest_done, info, entries, None)
+            except Exception as exc:
+                wx.CallAfter(self._on_harvest_done, info, None, exc)
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _on_harvest_progress(self, n: int) -> None:
+        dlg = getattr(self, "_harvest_dlg", None)
+        if dlg:
+            dlg.set_progress(n)
+
+    def _on_harvest_done(self, info: DownloadInfo, entries, exc) -> None:
+        from app.core.browser import ConsentRequiredError
+
+        dlg = getattr(self, "_harvest_dlg", None)
+        self._harvest_dlg = None
+        if dlg:
+            try:
+                dlg.Destroy()
+            except Exception:
+                pass
+
+        # Consentement / connexion YouTube requis -> connexion guidée puis reprise.
+        if isinstance(exc, ConsentRequiredError):
+            self._harvest_consent_login(info)
+            return
+
+        if exc is not None:
+            _log.error("Echec recolte playlist via navigateur — %s", exc)
+            self.set_status(_("Récupération impossible. Liste partielle affichée."))
+            self._show_playlist_dialog(info)
+            return
+
+        # Annulé ou rien récolté -> on garde la liste yt-dlp (les premières).
+        if self._harvest_stop or not entries:
+            self._show_playlist_dialog(info)
+            return
+
+        info.playlist_entries = entries
+        info.playlist_count = len(entries)
+        self._show_playlist_dialog(info)
+
+    def _harvest_consent_login(self, info: DownloadInfo) -> None:
+        """YouTube réclame d'accepter son consentement (cookies/conditions) avant
+        de lister la playlist. On ouvre YouTube dans le navigateur dédié pour que
+        l'utilisateur l'accepte, puis on relance la récolte. Pas besoin de compte
+        pour une playlist publique — d'où un wording « consentement », pas « login »."""
+        speech.speak(_("YouTube demande d'accepter ses conditions pour récupérer la playlist."))
+        dlg = wx.MessageDialog(
+            self,
+            _("Pour récupérer la liste complète, DownAccess va ouvrir YouTube "
+              "dans le navigateur.\n\n"
+              "Acceptez les conditions affichées par YouTube (et connectez-vous "
+              "si vous le souhaitez), puis revenez ici : la récupération "
+              "reprendra automatiquement."),
+            _("Une étape dans le navigateur"),
+            wx.OK | wx.CANCEL | wx.ICON_INFORMATION,
+        )
+        dlg.SetOKCancelLabels(_("Ouvrir YouTube"), _("Annuler"))
+        proceed = dlg.ShowModal() == wx.ID_OK
+        dlg.Destroy()
+        if not proceed:
+            self._show_playlist_dialog(info)
+            return
+        gdlg = GuidedLoginDialog(
+            self,
+            site_url="https://www.youtube.com",
+            site_name="YouTube",
+            title=_("YouTube dans le navigateur"),
+            intro=_(
+                "DownAccess ouvre YouTube dans son navigateur.\n\n"
+                "Acceptez les conditions affichées (et connectez-vous si vous le "
+                "souhaitez), puis revenez ici et cliquez sur « J'ai terminé » : "
+                "la récupération de la playlist reprendra automatiquement.\n\n"
+                "Inutile de fermer le navigateur vous-même, DownAccess s'en charge."
+            ),
+            action_text=_(
+                "Acceptez les conditions de YouTube dans le navigateur, puis "
+                "cliquez sur « J'ai terminé »."
+            ),
+            on_done=lambda ok, i=info: (
+                self._start_playlist_harvest(i) if ok
+                else self._show_playlist_dialog(i)
+            ),
+        )
+        gdlg.Show()
+
+    def _show_playlist_dialog(self, info: DownloadInfo) -> None:
+        """Affiche le dialogue de sélection des entrées et enfile la sélection."""
         from app.ui.playlist_dialog import NUMBER_ORIGINAL, NUMBER_SEQUENTIAL
         from app.core import settings as cfg
 
@@ -850,7 +1018,7 @@ class MainWindow(wx.Frame):
             _("Mettre en pause ou reprendre le téléchargement sélectionné"),
         )
         self.mi_cancel = dl_menu.Append(
-            ID_CANCEL, _("A&nnuler\tDelete"),
+            ID_CANCEL, _("Annu&ler\tDelete"),
             _("Supprimer le téléchargement sélectionné"),
         )
         dl_menu.Append(
@@ -873,7 +1041,7 @@ class MainWindow(wx.Frame):
         )
         dl_menu.AppendSeparator()
         self.mi_clip_toggle = dl_menu.AppendCheckItem(
-            ID_CLIP_TOGGLE, _("Surveiller le &presse-papiers\tCtrl+Shift+V"),
+            ID_CLIP_TOGGLE, _("&Surveiller le presse-papiers\tCtrl+Shift+V"),
             _("Détecter automatiquement les URLs copiées"),
         )
         dl_menu.AppendSeparator()
@@ -885,8 +1053,12 @@ class MainWindow(wx.Frame):
 
         # ---- Aide ----
         help_menu = wx.Menu()
+        self.mi_user_guide = help_menu.Append(
+            ID_USER_GUIDE, _("&Guide d'utilisation\tF1"),
+            _("Ouvrir le guide d'utilisation dans le navigateur"),
+        )
         self.mi_shortcuts = help_menu.Append(
-            ID_SHORTCUTS, _("Raccourcis &clavier"),
+            ID_SHORTCUTS, _("Raccourcis cla&vier"),
             _("Afficher la liste des raccourcis clavier"),
         )
         help_menu.AppendSeparator()
@@ -903,7 +1075,7 @@ class MainWindow(wx.Frame):
             _("Envoyer un message, une suggestion ou signaler un problème"),
         )
         self.mi_github = help_menu.Append(
-            ID_GITHUB, _("Page &GitHub du projet"),
+            ID_GITHUB, _("Page Git&Hub du projet"),
             _("Ouvrir la page GitHub de DownAccess dans le navigateur"),
         )
         help_menu.AppendSeparator()
@@ -1000,6 +1172,7 @@ class MainWindow(wx.Frame):
         self.Bind(wx.EVT_MENU, self._on_update_app,     id=ID_UPDATE_APP)
         self.Bind(wx.EVT_MENU, self._on_contact,        id=ID_CONTACT)
         self.Bind(wx.EVT_MENU, self._on_github,         id=ID_GITHUB)
+        self.Bind(wx.EVT_MENU, self._on_user_guide,     id=ID_USER_GUIDE)
         self.Bind(wx.EVT_MENU, self._on_import_urls,    id=ID_IMPORT_LIST)
         self.Bind(wx.EVT_MENU, self._on_show_history,   id=ID_HISTORY)
         self.Bind(wx.EVT_MENU, self._on_about,          id=wx.ID_ABOUT)
@@ -1579,6 +1752,7 @@ class MainWindow(wx.Frame):
 
     def _on_shortcuts(self, _event) -> None:
         msg = _(
+            "F1               Ouvrir le guide d'utilisation\n"
             "Ctrl+N           Ajouter URL(s)\n"
             "Ctrl+F           Rechercher (YouTube, SoundCloud...)\n"
             "Ctrl+G           Extraction guidée (navigateur intégré)\n"
@@ -1747,6 +1921,25 @@ class MainWindow(wx.Frame):
 
     def _on_github(self, _event) -> None:
         wx.LaunchDefaultBrowser("https://github.com/math65/downaccess")
+
+    def _on_user_guide(self, _event) -> None:
+        """Ouvre le guide d'utilisation (HTML embarqué) dans le navigateur.
+
+        Choisit la langue selon l'UI courante, avec repli sur le français.
+        Le navigateur + lecteur d'écran assurent une lecture accessible (la
+        règle a11y du projet déconseille WebView2 embarqué pour ce contenu).
+        """
+        lang = i18n.get_current_language_code()
+        docs = _docs_dir()
+        for path in (docs / f"guide.{lang}.html", docs / "guide.fr.html"):
+            if path.exists():
+                wx.LaunchDefaultBrowser(path.as_uri())
+                return
+        wx.MessageBox(
+            _("Le guide d'utilisation est introuvable."),
+            _("Guide d'utilisation"),
+            wx.OK | wx.ICON_ERROR, self,
+        )
 
     def _on_about(self, _event) -> None:
         wx.MessageBox(

@@ -20,6 +20,8 @@ DEFAULTS: dict = {
     "organize_by_site": False,
     "organize_by_playlist": False,
     "playlist_numbering": 0,       # 0=original, 1=séquentiel, 2=aucun
+    "playlist_full_harvest_auto": False,  # récupérer auto les playlists plafonnées
+                                          # via le navigateur (sans redemander)
     "clipboard_monitor": False,
     "ytdlp_extra_opts": [],
     "user_email": "",
