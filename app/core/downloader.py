@@ -7,7 +7,7 @@ import time
 import threading
 from dataclasses import dataclass, field
 from collections.abc import Callable
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 import yt_dlp
 
@@ -32,6 +32,48 @@ def _write_cookie_jar(cookie_header: str, url: str) -> str:
     with os.fdopen(fd, "w", encoding="utf-8") as f:
         f.write("\n".join(lines) + "\n")
     return path
+
+
+# Hôtes YouTube reconnus pour la normalisation des URLs de chaîne
+_YT_HOSTS = ("youtube.com", "www.youtube.com", "m.youtube.com")
+
+# Onglets de chaîne déjà spécifiques — on ne les touche pas
+_YT_CHANNEL_TABS = ("videos", "shorts", "streams", "playlists",
+                    "featured", "community", "about", "live", "podcasts")
+
+
+def _normalize_youtube_channel_url(url: str) -> str:
+    """Réécrit les URLs de chaîne YouTube vers l'onglet « Vidéos ».
+
+    YouTube borne l'endpoint *playlist* aux 100 dernières vidéos en accès non
+    connecté (yt-dlp ne suit pas la pagination au-delà). L'onglet « Vidéos »
+    d'une chaîne, lui, renvoie l'intégralité des vidéos. On réécrit donc :
+      - les playlists « envois » auto-générées (list=UU…) vers /channel/UC…/videos
+      - les URLs de chaîne nues (@handle, /channel/UC…, /c/…, /user/…) en y
+        ajoutant /videos
+    Les vraies playlists curées (list=PL…) et les onglets déjà spécifiques
+    restent inchangés.
+    """
+    try:
+        parsed = urlparse(url)
+    except ValueError:
+        return url
+    if (parsed.hostname or "").lower() not in _YT_HOSTS:
+        return url
+
+    # 1) Playlist « envois » auto-générée : list=UU… -> chaîne /videos
+    list_id = (parse_qs(parsed.query).get("list") or [""])[0]
+    if parsed.path.rstrip("/") == "/playlist" and list_id.startswith("UU"):
+        return f"https://www.youtube.com/channel/UC{list_id[2:]}/videos"
+
+    # 2) URL de chaîne nue (sans onglet spécifique) -> ajouter /videos
+    segments = [s for s in parsed.path.split("/") if s]
+    if segments:
+        head, last = segments[0], segments[-1].lower()
+        is_channel = head.startswith("@") or head in ("channel", "c", "user")
+        if is_channel and last not in _YT_CHANNEL_TABS:
+            return f"https://www.youtube.com/{'/'.join(segments)}/videos"
+    return url
 
 
 @dataclass
@@ -161,6 +203,13 @@ class Downloader:
         use_cookies : forcer l'utilisation des cookies (retry après erreur).
         referer / cookies : headers UGE (extraction guidée).
         """
+        # Une chaîne / playlist « envois » -> onglet Vidéos (récupère TOUTES
+        # les vidéos ; l'endpoint playlist est plafonné à 100 par YouTube)
+        norm_url = _normalize_youtube_channel_url(url)
+        if norm_url != url:
+            _log.info("URL chaîne normalisée vers l'onglet Vidéos : %s", norm_url)
+            url = norm_url
+
         # Première passe légère pour détecter les playlists
         flat_opts = {
             "quiet": True,
@@ -187,8 +236,17 @@ class Downloader:
             cookie_jar_path = _write_cookie_jar(cookies, url)
             flat_opts["cookiefile"] = cookie_jar_path
 
-        # Impersonation navigateur
-        flat_opts["extractor_args"] = {"generic": {"impersonate": [""]}}
+        # Impersonation navigateur. youtubetab:skip=webpage force le chemin API
+        # (au lieu de la page HTML), qui pagine plus loin sur les playlists
+        # YouTube : ~200 entrées au lieu de 100 (limitation YouTube côté serveur
+        # au-delà, cf. yt-dlp #11130 ; sans effet sur l'onglet Vidéos d'une chaîne
+        # qui reste complet). skip=authcheck évite l'erreur « Playlists that
+        # require authentication... » que déclenche skip=webpage sur certaines
+        # playlists publiques.
+        flat_opts["extractor_args"] = {
+            "generic": {"impersonate": [""]},
+            "youtubetab": {"skip": ["webpage", "authcheck"]},
+        }
 
         # Cookies depuis le navigateur de l'utilisateur (si pas de cookies UGE)
         if not cookies and (use_cookies or _should_use_cookies(self._settings, url)):
