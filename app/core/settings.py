@@ -22,6 +22,8 @@ DEFAULTS: dict = {
     "playlist_numbering": 0,       # 0=original, 1=séquentiel, 2=aucun
     "playlist_full_harvest_auto": False,  # récupérer auto les playlists plafonnées
                                           # via le navigateur (sans redemander)
+    "download_announcements": "always",  # always | foreground | never
+                                          # annonces vocales début/fin de téléchargement
     "clipboard_monitor": False,
     "ytdlp_extra_opts": [],
     "user_email": "",

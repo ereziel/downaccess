@@ -229,13 +229,27 @@ class MainWindow(wx.Frame):
             on_warning=self._on_dl_warning,
         )
 
+    def _announce_download(self, text: str, interrupt: bool = False) -> None:
+        """Annonce vocale d'un evenement de telechargement, selon le reglage
+        'download_announcements' :
+          - always     : toujours annoncer
+          - foreground : seulement si la fenetre DownAccess est au premier plan
+          - never      : ne jamais annoncer
+        L'info reste de toute facon visible (barre de statut + liste)."""
+        mode = self.settings.get("download_announcements", "always")
+        if mode == "never":
+            return
+        if mode == "foreground" and not self.IsActive():
+            return
+        speech.speak(text, interrupt=interrupt)
+
     def _on_dl_info(self, info: DownloadInfo) -> None:
         self.download_list.update_info(info.download_id, info.title, info.site, info.fmt)
         if info.download_id in self._dl_data:
             self._dl_data[info.download_id]["site"]  = info.site
             self._dl_data[info.download_id]["title"] = info.title
         title = info.title or info.url
-        speech.speak(_("Téléchargement démarré : {title}.").format(title=title), interrupt=False)
+        self._announce_download(_("Téléchargement démarré : {title}.").format(title=title))
 
     def _on_dl_progress(self, prog: DownloadProgress) -> None:
         self.download_list.update_progress(prog.download_id, prog.percent, prog.size)
@@ -256,7 +270,7 @@ class MainWindow(wx.Frame):
         if self._gauge_dl_id == download_id:
             self._reset_gauge()
         self.set_status(_("Téléchargement terminé."))
-        speech.speak(_("Téléchargement terminé."))
+        self._announce_download(_("Téléchargement terminé."), interrupt=False)
         dl_data = self._dl_data.get(download_id, {})
         self._log_history(dl_data, status="success")
         # Si c'était un retry avec cookies, proposer de mémoriser le site
@@ -278,8 +292,8 @@ class MainWindow(wx.Frame):
         self._log_history(self._dl_data.get(download_id, {}), status="success")
         self.set_status(_("Le téléchargement a finalement réussi : le fichier "
                           "est dans votre dossier de téléchargements."))
-        speech.speak(_("Le téléchargement a finalement réussi. Le fichier est "
-                       "dans votre dossier de téléchargements."))
+        self._announce_download(_("Le téléchargement a finalement réussi. Le fichier est "
+                                  "dans votre dossier de téléchargements."))
 
     def _on_dl_error(self, download_id: str, message: str,
                      login_required: bool = False) -> None:
@@ -502,7 +516,7 @@ class MainWindow(wx.Frame):
 
     def _on_dl_warning(self, download_id: str, message: str) -> None:
         self.set_status(_("Téléchargement terminé avec avertissement."))
-        speech.speak(_("Téléchargement terminé avec avertissement."))
+        self._announce_download(_("Téléchargement terminé avec avertissement."))
         dlg = WarningDialog(self, message)
         dlg.ShowModal()
         if dlg.wants_report():

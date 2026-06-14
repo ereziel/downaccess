@@ -12,6 +12,7 @@ POST_CHOICES = ["none", "mp4", "mp3", "m4a"]
 SUBTITLE_FORMAT_CHOICES = ["srt", "vtt", "original"]
 SUBTITLE_MODE_CHOICES = ["separate", "embed", "burn"]
 LANGUAGE_CHOICES = ["auto", "fr", "en"]
+ANNOUNCE_CHOICES = ["always", "foreground", "never"]
 
 # Limiteur de vitesse : valeurs en octets/sec. 0 = illimité.
 RATELIMIT_VALUES = [
@@ -59,6 +60,14 @@ def _ratelimit_labels():
         _("2 Mo/s"),
         _("5 Mo/s"),
         _("10 Mo/s"),
+    ]
+
+
+def _announce_labels():
+    return [
+        _("Toujours"),
+        _("Seulement quand DownAccess est au premier plan"),
+        _("Jamais"),
     ]
 
 
@@ -193,6 +202,21 @@ class SettingsDialog(wx.Dialog):
             label=_("Organiser dans des sous-dossiers par playlist"),
             name=_("Organiser dans des sous-dossiers par playlist"))
 
+        # Annonces vocales des téléchargements
+        self.radio_announce = wx.RadioBox(
+            page,
+            label=_("Annoncer vocalement le début et la fin des téléchargements"),
+            choices=_announce_labels(),
+            majorDimension=1,
+            style=wx.RA_SPECIFY_COLS,
+            name=_("Annonces vocales des téléchargements"),
+        )
+        lbl_announce_hint = wx.StaticText(
+            page,
+            label=_("L'information reste toujours visible dans la liste et la barre d'état."),
+        )
+        lbl_announce_hint.SetForegroundColour(wx.SystemSettings.GetColour(wx.SYS_COLOUR_GRAYTEXT))
+
         # Extraction guidée
         lbl_uge = wx.StaticText(page, label=_("Extraction guidée :"))
         self.chk_intercept_title = wx.CheckBox(page,
@@ -219,6 +243,8 @@ class SettingsDialog(wx.Dialog):
         sizer.Add(self.chk_open_folder,       0, wx.LEFT | wx.RIGHT | wx.TOP, 6)
         sizer.Add(self.chk_organize,          0, wx.LEFT | wx.RIGHT | wx.TOP, 6)
         sizer.Add(self.chk_organize_playlist, 0, wx.LEFT | wx.RIGHT | wx.TOP, 4)
+        sizer.Add(self.radio_announce,        0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 12)
+        sizer.Add(lbl_announce_hint,          0, wx.LEFT | wx.RIGHT | wx.TOP, 4)
         sizer.Add(lbl_uge,                    0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 12)
         sizer.Add(self.chk_intercept_title,   0, wx.LEFT | wx.RIGHT | wx.TOP, 6)
         sizer.Add(lbl_warn,                   0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 12)
@@ -402,6 +428,9 @@ class SettingsDialog(wx.Dialog):
         self.chk_organize.SetValue(s.get("organize_by_site", False))
         self.chk_organize_playlist.SetValue(s.get("organize_by_playlist", False))
         self.chk_intercept_title.SetValue(s.get("intercept_use_page_title", True))
+        announce = s.get("download_announcements", "always")
+        ann_idx = ANNOUNCE_CHOICES.index(announce) if announce in ANNOUNCE_CHOICES else 0
+        self.radio_announce.SetSelection(ann_idx)
 
         # Formats
         post = s.get("post_processing", "none")
@@ -450,6 +479,7 @@ class SettingsDialog(wx.Dialog):
         s["organize_by_site"]         = self.chk_organize.GetValue()
         s["organize_by_playlist"]     = self.chk_organize_playlist.GetValue()
         s["intercept_use_page_title"] = self.chk_intercept_title.GetValue()
+        s["download_announcements"]   = ANNOUNCE_CHOICES[self.radio_announce.GetSelection()]
 
         # Formats
         s["post_processing"] = POST_CHOICES[self.choice_post.GetSelection()]
