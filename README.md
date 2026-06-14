@@ -50,18 +50,14 @@ DownAccess est conçu pour être 100 % utilisable avec NVDA :
 
 ## Installation (développement)
 
-**Prérequis :** Python 3.11+
+**Prérequis :** [UV](https://docs.astral.sh/uv/) (gestionnaire de paquets Python). UV installe automatiquement la bonne version de Python (3.14, cf. `.python-version`).
 
 ```bash
 git clone https://github.com/votre-compte/downaccess.git
 cd downaccess
 
-python -m venv venv
-source venv/Scripts/activate   # Git Bash / bash sur Windows
-# ou : venv\Scripts\activate.bat  (cmd)
-
-pip install -r requirements.txt
-python main.py
+uv sync               # crée .venv + installe toutes les dépendances (lock reproductible)
+uv run python main.py # lance l'application
 ```
 
 ## Dépendances

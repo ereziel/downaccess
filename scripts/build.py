@@ -21,7 +21,7 @@ FFMPEG    = ROOT / "assets" / "ffmpeg.exe"
 SPEC      = ROOT / "downaccess.spec"
 EXE       = ROOT / "dist" / "DownAccess" / "DownAccess.exe"
 BUNDLE    = ROOT / "dist" / "DownAccess"
-VENV_PY   = ROOT / "venv" / "Scripts" / "python.exe"
+VENV_PY   = ROOT / ".venv" / "Scripts" / "python.exe"
 
 
 def _size(path: Path) -> str:

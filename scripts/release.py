@@ -9,7 +9,7 @@ RELEASE_NOTES.en.md (EN) si presents, concatenes dans le body de la release
 GitHub. Sinon, generes depuis git log (commits depuis le dernier tag).
 
 Prérequis :
-  - venv activé (pour PyInstaller via build.py)
+  - `uv sync` fait (cree .venv avec PyInstaller, utilise par build.py)
   - gh CLI installé et authentifié
   - Inno Setup 6 installé dans le chemin standard
 
@@ -37,7 +37,7 @@ INSTALLER    = ROOT / "installer_output" / "DownAccess-Setup.exe"
 SHA_FILE     = ROOT / "installer_output" / "DownAccess-Setup.exe.sha256"
 BUILD_PY     = ROOT / "scripts" / "build.py"
 ISCC         = Path(r"C:\Users\mathi\AppData\Local\Programs\Inno Setup 6\ISCC.exe")
-VENV_PY      = ROOT / "venv" / "Scripts" / "python.exe"
+VENV_PY      = ROOT / ".venv" / "Scripts" / "python.exe"
 
 
 def run(cmd: list, **kw) -> subprocess.CompletedProcess:

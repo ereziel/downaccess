@@ -1,7 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
 """
 Spec PyInstaller pour DownAccess.
-Build : source venv/Scripts/activate && pyinstaller downaccess.spec
+Build : uv run pyinstaller downaccess.spec  (ou : uv run python scripts/build.py)
 """
 import sys
 from pathlib import Path
