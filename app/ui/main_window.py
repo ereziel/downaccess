@@ -18,6 +18,10 @@ _URL_RE = re.compile(r'https?://[^\s"\'<>]+', re.IGNORECASE)
 # Cles internes (jamais traduites). search_dialog._TYPE_LABELS resout l'affichage.
 _SEARCH_TYPE_ORDER = {"video": 0, "track": 0, "playlist": 1, "channel": 2}
 
+# Filtres de type de la recherche YouTube (paramètre `sp` de la page de résultats).
+# Permet de ne renvoyer qu'un type de résultat (vidéos / playlists / chaînes).
+_YT_SEARCH_SP = {"video": "EgIQAQ==", "playlist": "EgIQAw==", "channel": "EgIQAg=="}
+
 
 def _classify_search_entry(entry: dict, site_prefix: str) -> str:
     """Determine le type d'un resultat de recherche (cle interne)."""
@@ -40,6 +44,7 @@ from app.core import announce
 from app.core.downloader import DownloadInfo, DownloadProgress
 from app.core.queue_manager import QueueManager
 from app.ui.add_url_dialog import AddUrlDialog, FORMAT_MANUAL
+from app.ui.announcement_dialog import AnnouncementDialog
 from app.ui.download_list import (
     DownloadList,
     STATUS_PENDING,
@@ -1212,9 +1217,16 @@ class MainWindow(wx.Frame):
             query        = dlg.get_query()
             site_prefix  = dlg.get_site_prefix()
             site_label   = dlg.get_site_label()
+            search_type  = dlg.get_search_type()
             n            = dlg.get_n()
 
-        search_url = f"{site_prefix}{n}:{query}"
+        if site_prefix == "ytsearch" and search_type in _YT_SEARCH_SP:
+            # Filtre par type via la page de résultats YouTube (paramètre `sp`).
+            import urllib.parse
+            search_url = "https://www.youtube.com/results?" + urllib.parse.urlencode(
+                {"search_query": query, "sp": _YT_SEARCH_SP[search_type]})
+        else:
+            search_url = f"{site_prefix}{n}:{query}"
         self.set_status(_("Recherche en cours : {query}…").format(query=query))
         speech.speak(_("Recherche sur {site}…").format(site=site_label))
 
@@ -1230,6 +1242,7 @@ class MainWindow(wx.Frame):
                     "no_warnings": True,
                     "extract_flat": True,
                     "skip_download": True,
+                    "playlistend": n,
                 }
                 with yt_dlp.YoutubeDL(opts) as ydl:
                     info = ydl.extract_info(search_url, download=False)
@@ -1885,28 +1898,50 @@ class MainWindow(wx.Frame):
         )
 
     def _on_announcement_received(self, ann: dict | None) -> None:
-        if not ann:
-            return
-        title = ann.get("title") or APP_NAME
-        body = ann.get("body") or ""
-        if not body:
-            return
-        ann_id = ann.get("id") or ""
-        mode = ann.get("mode") or "every"
+        """Affiche l'annonce (si non vue), puis enchaine la verif MAJ."""
+        try:
+            if not ann:
+                return
+            title = ann.get("title") or APP_NAME
+            body = ann.get("body") or ""
+            if not body:
+                return
+            ann_id = ann.get("id") or ""
+            mode = ann.get("mode") or "every"
 
-        if mode == "once" and ann_id in self.settings.get("seen_announcements", []):
-            return
+            if mode == "once" and ann_id in self.settings.get("seen_announcements", []):
+                return
 
-        icon = wx.ICON_WARNING if ann.get("style") == "warning" else wx.ICON_INFORMATION
-        wx.MessageBox(body, title, wx.OK | icon, self)
+            # /announce/check renvoie le lien comme objet imbrique {label, url}
+            # (deja localise par le backend), ou null. Pas de champs plats.
+            link = ann.get("link") or {}
+            link_url = link.get("url") or ""
+            if link_url:
+                # Annonce « interactive » : dialogue avec bouton lien + /click.
+                iid = self.settings.get("install_id", "")
+                dlg = AnnouncementDialog(
+                    self, title=title, body=body,
+                    link_label=link.get("label") or "",
+                    link_url=link_url,
+                    on_link=(lambda: announce.click_announcement(iid, ann_id)) if ann_id else None,
+                )
+                dlg.ShowModal()
+                dlg.Destroy()
+            else:
+                icon = wx.ICON_WARNING if ann.get("style") == "warning" else wx.ICON_INFORMATION
+                wx.MessageBox(body, title, wx.OK | icon, self)
 
-        if mode == "once" and ann_id:
-            seen = self.settings.setdefault("seen_announcements", [])
-            if ann_id not in seen:
-                seen.append(ann_id)
-                cfg.save(self.settings)
-        if ann_id:
-            announce.ack_announcement(self.settings.get("install_id", ""), ann_id)
+            if mode == "once" and ann_id:
+                seen = self.settings.setdefault("seen_announcements", [])
+                if ann_id not in seen:
+                    seen.append(ann_id)
+                    cfg.save(self.settings)
+            if ann_id:
+                announce.ack_announcement(self.settings.get("install_id", ""), ann_id)
+        finally:
+            # Quoi qu'il arrive (annonce affichee, deja vue, ou aucune), on
+            # enchaine la verif MAJ — jamais avant la fermeture de l'annonce.
+            self.check_app_update_at_startup()
 
     def _on_update_ytdlp(self, _event) -> None:
         self.set_status(_("Vérification de la version yt-dlp…"))

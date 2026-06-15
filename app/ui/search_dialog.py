@@ -14,6 +14,20 @@ _SITES = [
 ]
 
 
+def _search_types() -> list[tuple[str, str]]:
+    """Types de résultat filtrables : (libellé affiché, code interne).
+
+    Construits paresseusement pour que `_()` soit installé au moment de l'appel.
+    Seul YouTube gère le filtre par type ; SoundCloud ne renvoie que des pistes.
+    """
+    return [
+        (_("Tous types"), "all"),
+        (_("Vidéos"),     "video"),
+        (_("Playlists"),  "playlist"),
+        (_("Chaînes"),    "channel"),
+    ]
+
+
 def _dl_type_label(code: str) -> str:
     """Convertit le code interne ('video' / 'track' / 'playlist' / 'channel')
     vers son libelle localise pour l'affichage dans la liste de resultats."""
@@ -34,7 +48,7 @@ class SearchDialog(wx.Dialog):
         self._build_ui()
         self.txt_query.SetFocus()
         speech.speak(
-            _("Fenêtre de recherche. Saisissez votre requête, choisissez le site et le nombre de résultats.")
+            _("Fenêtre de recherche. Saisissez votre requête, choisissez le site, le type et le nombre de résultats.")
         )
 
     def _build_ui(self) -> None:
@@ -57,8 +71,20 @@ class SearchDialog(wx.Dialog):
             name=_("Site de recherche"),
         )
         self.choice_site.SetSelection(0)
+        self.choice_site.Bind(wx.EVT_CHOICE, self._on_site_change)
         grid.Add(lbl_site, 0, wx.ALIGN_CENTER_VERTICAL)
         grid.Add(self.choice_site, 1, wx.EXPAND)
+
+        # Type de résultat (YouTube uniquement)
+        lbl_type = wx.StaticText(self, label=_("Type :"))
+        self.choice_type = wx.Choice(
+            self,
+            choices=[t[0] for t in _search_types()],
+            name=_("Type de résultat"),
+        )
+        self.choice_type.SetSelection(0)
+        grid.Add(lbl_type, 0, wx.ALIGN_CENTER_VERTICAL)
+        grid.Add(self.choice_type, 1, wx.EXPAND)
 
         # Nombre de résultats
         lbl_n = wx.StaticText(self, label=_("Résultats :"))
@@ -76,6 +102,13 @@ class SearchDialog(wx.Dialog):
 
         self.Bind(wx.EVT_BUTTON, self._on_ok, id=wx.ID_OK)
 
+    def _on_site_change(self, _event) -> None:
+        """SoundCloud ne renvoie que des pistes : le filtre de type est sans objet."""
+        is_youtube = self.get_site_prefix() == "ytsearch"
+        if not is_youtube:
+            self.choice_type.SetSelection(0)
+        self.choice_type.Enable(is_youtube)
+
     def _on_ok(self, _event) -> None:
         if not self.txt_query.GetValue().strip():
             speech.speak(_("Veuillez saisir une requête."))
@@ -90,6 +123,11 @@ class SearchDialog(wx.Dialog):
 
     def get_site_label(self) -> str:
         return _SITES[self.choice_site.GetSelection()][0]
+
+    def get_search_type(self) -> str:
+        if not self.choice_type.IsEnabled():
+            return "all"
+        return _search_types()[self.choice_type.GetSelection()][1]
 
     def get_n(self) -> int:
         return self.spin_n.GetValue()

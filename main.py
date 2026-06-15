@@ -25,7 +25,9 @@ def main():
             frame.on_ytdlp_update_done, status, info
         )
     )
-    frame.check_app_update_at_startup()
+    # Annonce d'abord ; la verif MAJ est enchainee a la fin du traitement de
+    # l'annonce (voir MainWindow._on_announcement_received) pour ne jamais ouvrir
+    # deux modales en meme temps au demarrage.
     frame.check_announcement_at_startup()
 
     app.MainLoop()
