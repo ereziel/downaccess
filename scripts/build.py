@@ -52,9 +52,17 @@ def main() -> int:
         )
     ok(f"ffmpeg trouvé ({FFMPEG.stat().st_size / 1_048_576:.1f} Mo)")
 
-    # 2. PyInstaller
-    step("Build PyInstaller…")
     py = str(VENV_PY) if VENV_PY.exists() else sys.executable
+
+    # 2. Generer les guides HTML embarques (depuis docs/*.md)
+    step("Generation des guides HTML…")
+    rc = subprocess.run([py, "scripts/build_docs.py"], cwd=ROOT)
+    if rc.returncode != 0:
+        return fail("La generation des guides HTML a echoue")
+    ok("Guides HTML generes")
+
+    # 3. PyInstaller
+    step("Build PyInstaller…")
     result = subprocess.run(
         [py, "-m", "PyInstaller", str(SPEC), "--noconfirm"],
         cwd=ROOT,

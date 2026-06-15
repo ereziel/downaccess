@@ -143,17 +143,22 @@ dl/
 
 | Action                              | Raccourci          |
 |-------------------------------------|--------------------|
+| Guide d'utilisation                 | F1                 |
 | Ajouter URL(s)                      | Ctrl+N             |
 | Recherche intégrée                  | Ctrl+F             |
+| Extraction guidée                   | Ctrl+G             |
 | Coller URL depuis presse-papiers    | Ctrl+V             |
 | Surveillance presse-papiers on/off  | Ctrl+Shift+V       |
+| Historique                          | Ctrl+H             |
 | Démarrer la file                    | F5                 |
+| Pause / Reprendre                   | Espace             |
 | Réessayer sélectionné               | F2                 |
 | Supprimer sélectionné               | Suppr              |
+| Vider la liste                      | Maj+Suppr          |
+| Monter dans la file                 | Alt+Haut           |
+| Descendre dans la file              | Alt+Bas            |
 | Ouvrir dossier de destination       | Ctrl+O             |
 | Préférences                         | Ctrl+P             |
-| User Guided Extraction              | Menu Outils        |
-| Retour app depuis WebView           | F6                 |
 | Quitter                             | Alt+F4             |
 
 ---

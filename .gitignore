@@ -55,3 +55,9 @@ plan.md
 
 # Release notes rédigées avant chaque release (non versionnées)
 RELEASE_NOTES.md
+
+# Guides utilisateur HTML generes (scripts/build_docs.py) depuis docs/*.md
+docs/*.html
+
+# Sortie de build de l'installeur Inno Setup
+installer_output/

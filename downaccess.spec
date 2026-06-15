@@ -32,6 +32,15 @@ for po_path in Path('locales').rglob('*.po'):
     # Ex : locales/en/LC_MESSAGES/base.po -> locales/en/LC_MESSAGES
     LOCALE_DATAS.append((str(po_path), str(po_path.parent)))
 
+# Guides utilisateur HTML (menu Aide -> Guide d'utilisation, ouverts dans le
+# navigateur). Genere par scripts/build_docs.py. -> _internal/docs/ dans le bundle.
+DOC_DATAS = [(str(p), 'docs') for p in sorted(Path('docs').glob('guide.*.html'))]
+if not DOC_DATAS:
+    raise FileNotFoundError(
+        "Aucun guide HTML dans docs/.\n"
+        "Lance d'abord : python scripts/build_docs.py"
+    )
+
 a = Analysis(
     ['main.py'],
     pathex=['.'],
@@ -39,7 +48,7 @@ a = Analysis(
         (str(FFMPEG_EXE), '.'),   # → _internal/ffmpeg.exe dans le bundle
         (str(QJS_EXE), '.'),      # → _internal/qjs.exe dans le bundle
     ],
-    datas=LOCALE_DATAS,
+    datas=LOCALE_DATAS + DOC_DATAS,
     hiddenimports=[
         # wxPython
         'wx',
