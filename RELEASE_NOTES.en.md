@@ -1,8 +1,8 @@
-## DownAccess 0.1.25
+## DownAccess 0.1.26
 
 ### What's new
 
-- **Filter your searches by type.** When you search on YouTube, you can now show only videos, only playlists, or only channels. Handy for going straight to what you're looking for without sifting through everything yourself. The filter is in the search window, right next to the site selector.
+- **Cancel an update in progress.** When DownAccess is downloading an update, you can now cancel it at any time with the "Cancel" button (or by closing the window). The download stops cleanly and the partially downloaded file is removed — no more waiting for it to finish if you change your mind.
 
 ### Note
 

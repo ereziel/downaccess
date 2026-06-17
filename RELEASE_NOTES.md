@@ -1,8 +1,8 @@
-## DownAccess 0.1.25
+## DownAccess 0.1.26
 
 ### Nouveautés
 
-- **Filtrer vos recherches par type.** Lorsque vous faites une recherche sur YouTube, vous pouvez maintenant n'afficher que les vidéos, que les playlists ou que les chaînes. Pratique pour aller droit à ce que vous cherchez sans faire le tri vous-même. Le filtre se trouve dans la fenêtre de recherche, juste à côté du choix du site.
+- **Annuler une mise à jour en cours.** Lorsque DownAccess télécharge une mise à jour, vous pouvez désormais l'annuler à tout moment avec le bouton « Annuler » (ou en fermant la fenêtre). Le téléchargement s'arrête proprement et le fichier partiellement téléchargé est supprimé — plus besoin d'attendre la fin si vous changez d'avis.
 
 ### Note
 
