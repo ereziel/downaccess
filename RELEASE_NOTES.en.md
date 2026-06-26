@@ -1,8 +1,8 @@
-## DownAccess 0.1.26
+## DownAccess 0.1.27
 
 ### What's new
 
-- **Cancel an update in progress.** When DownAccess is downloading an update, you can now cancel it at any time with the "Cancel" button (or by closing the window). The download stops cleanly and the partially downloaded file is removed — no more waiting for it to finish if you change your mind.
+- **More reliable YouTube downloads.** Sometimes a video would refuse to download with an error, even though everything worked fine moments later: YouTube occasionally blocks access temporarily, with nothing to do with your connection. DownAccess now automatically retries (up to three times) before showing an error. In the vast majority of cases, the file is retrieved without you having to do anything.
 
 ### Note
 
