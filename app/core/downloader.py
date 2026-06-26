@@ -125,6 +125,28 @@ def _is_login_required(msg: str) -> bool:
     return any(p in low for p in _LOGIN_REQUIRED_PATTERNS)
 
 
+# Marqueurs d'une erreur côté serveur/réseau qu'une *nouvelle extraction*
+# peut résoudre. Cas typique YouTube : l'URL signée (googlevideo.com) du
+# client de repli ANDROID_VR se fait refuser par intermittence (403/Forbidden,
+# durcissement SABR/PO-token). Une ré-extraction fraîche regénère une URL
+# acceptée. Les 5xx transitoires entrent dans la même catégorie.
+_TRANSIENT_ERROR_PATTERNS = (
+    "http error 403", "forbidden",
+    "unable to download video data",
+    "http error 500", "http error 502", "http error 503",
+)
+
+
+def is_transient_error(msg: str) -> bool:
+    """Vrai si l'erreur est probablement transitoire et qu'un nouvel essai
+    (avec ré-extraction) a de bonnes chances d'aboutir. EXCLUT explicitement
+    l'annulation par l'utilisateur (jamais à réessayer)."""
+    low = (msg or "").lower()
+    if "annul" in low or "cancel" in low:
+        return False
+    return any(p in low for p in _TRANSIENT_ERROR_PATTERNS)
+
+
 def _humanize_error(msg: str) -> str:
     """Traduit certaines erreurs yt-dlp cryptiques en messages clairs et
     actionnables pour le grand public.
@@ -445,18 +467,45 @@ class Downloader:
                      eff_settings.get("subtitle_mode") == "burn"
                      and not opts.get("skip_download"))
 
+        def _run_download(active_opts: dict) -> None:
+            with yt_dlp.YoutubeDL(active_opts) as ydl:
+                if burn_subs:
+                    ydl.add_post_processor(
+                        _BurnSubtitlesPP(
+                            downloader=ydl,
+                            ffmpeg_path=get_ffmpeg_path(self._settings),
+                        ),
+                        when="post_process",
+                    )
+                ydl.download([url])
+
         try:
             try:
-                with yt_dlp.YoutubeDL(opts) as ydl:
-                    if burn_subs:
-                        ydl.add_post_processor(
-                            _BurnSubtitlesPP(
-                                downloader=ydl,
-                                ffmpeg_path=get_ffmpeg_path(self._settings),
-                            ),
-                            when="post_process",
-                        )
-                    ydl.download([url])
+                # Réessai sur erreur transitoire : un 403/Forbidden sur une URL
+                # YouTube (client de repli ANDROID_VR) est intermittent ; une
+                # nouvelle extraction regénère une URL acceptée. Chaque appel à
+                # _run_download relance une extraction complète et reprend le
+                # .part. Borné à 3 tentatives (chaque essai = challenge JS).
+                _MAX_ATTEMPTS = 3
+                for _attempt_no in range(1, _MAX_ATTEMPTS + 1):
+                    try:
+                        _run_download(opts)
+                        break
+                    except yt_dlp.utils.DownloadError as exc:
+                        if (_attempt_no < _MAX_ATTEMPTS
+                                and is_transient_error(str(exc))
+                                and not stop_event.is_set()):
+                            _log.warning(
+                                "Erreur transitoire id=%s (tentative %d/%d), "
+                                "nouvelle extraction : %s",
+                                download_id, _attempt_no, _MAX_ATTEMPTS, exc)
+                            # Courte pause interruptible avant la ré-extraction
+                            _wait = 2.0
+                            while _wait > 0 and not stop_event.is_set():
+                                time.sleep(0.2)
+                                _wait -= 0.2
+                            continue
+                        raise
             except yt_dlp.utils.DownloadError as exc:
                 err_msg = str(exc)
                 if log_buf is not None and on_verbose_log is not None:

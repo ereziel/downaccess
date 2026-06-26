@@ -69,7 +69,7 @@ from app.ui.error_dialog import ErrorDialog
 from app.ui.warning_dialog import WarningDialog
 from app.ui.report_dialog import ReportDialog
 from app.core import error_reporter
-from app.core.downloader import Downloader
+from app.core.downloader import Downloader, is_transient_error
 
 APP_NAME = "DownAccess"
 
@@ -659,10 +659,31 @@ class MainWindow(wx.Frame):
 
                 verbose = log[0] if log else ""
                 if recovered["ok"]:
+                    # Qualifier honnêtement l'erreur d'origine plutôt que de
+                    # supposer systématiquement « connexion instable » : un 403
+                    # YouTube est un refus serveur (anti-robot), pas un problème
+                    # de réseau côté utilisateur.
+                    _low = (error_message or "").lower()
+                    if is_transient_error(error_message):
+                        _cause = (
+                            "YouTube a temporairement refusé l'URL de "
+                            "téléchargement (protection anti-robot d'un serveur "
+                            "YouTube, pas un problème de connexion). Une "
+                            "nouvelle extraction a permis de récupérer le "
+                            "fichier complet."
+                        )
+                    elif any(s in _low for s in (
+                            "timed out", "timeout", "connection",
+                            "réseau", "reseau")):
+                        _cause = ("l'erreur initiale était transitoire "
+                                  "(connexion instable).")
+                    else:
+                        _cause = ("l'erreur initiale était temporaire ; une "
+                                  "nouvelle tentative a abouti et le fichier "
+                                  "est complet.")
                     verbose = (
                         "[DownAccess] La relance de diagnostic a repris et "
-                        "terminé le téléchargement : l'erreur initiale était "
-                        "transitoire (connexion instable).\n\n" + verbose
+                        "terminé le téléchargement : " + _cause + "\n\n" + verbose
                     )
                     wx.CallAfter(self._on_diagnostic_recovered,
                                  download_id, recovered["filepath"])
