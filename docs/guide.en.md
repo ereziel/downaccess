@@ -177,21 +177,26 @@ DownAccess has a built-in search engine: you can find videos and music, preview 
 
 Press **Ctrl+F**, or open the menu and choose **Search...**. The **Search for media** window opens, with the cursor already placed in the input field.
 
-This window has three settings:
+This window has several settings:
 
 1. **Search**: type what you are looking for (a song title, the name of a video, an artist...).
-2. **Site**: choose where to search. Two sites are available:
+2. **Site**: choose where to search. Four sites are available:
    - **YouTube** (default setting)
    - **SoundCloud**
-3. **Results**: specify how many results to display, from 1 to 25. The default value is **8**.
+   - **france.tv**
+   - **Arte**
+3. **Type**: for YouTube only, you can narrow the search to a result type — **All types**, **Videos**, **Playlists** or **Channels**. For the other sites, this setting has no effect.
+4. **Results**: specify how many results to display, from 1 to 25. The default value is **8**.
 
 Confirm with the **OK** button, or simply press **Enter** from the search field.
 
-> Accessibility note: when the window opens, your screen reader announces its role and reminds you of the three settings. The focus starts directly in the input field, so you can type right away.
+> Accessibility note: when the window opens, your screen reader announces its role and reminds you of the settings. The focus starts directly in the input field, so you can type right away.
 
 ### Browsing and choosing results
 
 Results are shown in the **Results** window, as a list. For each entry, you will find its selection state, its **title**, its **duration**, its **author** and its **type** (video, track, playlist or channel).
+
+> On **france.tv**, videos that offer audio description are flagged in their title (an "— Audio description" mention), so you can spot them at a glance.
 
 To select the media you want to download:
 
@@ -329,6 +334,19 @@ The "Subtitle mode" option defines how the subtitles are attached to the video:
 - **Separate file (.srt next to the video)** — the subtitles are saved in a separate file, placed next to the video. You can turn them on in your player, or open them like an ordinary text file.
 - **Included in the container (toggleable track)** — the subtitles are built into the video file, as a track you can turn on or off during playback.
 - **Burned into the picture (re-encodes the video, slower)** — the subtitles are permanently burned into the picture. This option re-encodes the video, which takes longer and can no longer be undone.
+
+### Choosing the audio track and audio description (france.tv, Arte)
+
+On **france.tv** and **Arte**, a single video often offers several audio tracks: the French version, sometimes the original version, and above all **audio description** (the voice that describes what is on screen, invaluable for blind and visually impaired users).
+
+When you download such a video, DownAccess lets you choose the track or tracks:
+
+- **For a video**: you can check several tracks; they are all placed in the same file, and you switch between them in your player.
+- **For an audio download (MP3 or M4A)**: an audio file holds a single track, so you pick just one.
+
+By default, DownAccess asks every time, through a small chooser window that opens just before the download.
+
+If you would rather not be asked, you can set an **automatic** behaviour in the preferences (Formats tab, **Audio description** setting — see the Settings chapter). For example, by choosing "Audio description only", DownAccess will automatically take the audio description track whenever it exists, without asking.
 
 ### The conversion happens after the download
 
@@ -625,7 +643,9 @@ The **Reset all warnings** button shows again the warning messages you had chose
 
 ### Formats tab
 
-This tab contains a single setting: **Default format**, that is, the format into which your downloads will be converted. Four choices are offered:
+This tab contains two settings.
+
+**Default format** — the format into which your downloads will be converted. Four choices are offered:
 
 - **None (original file)**: keeps the file as is, without conversion. This is the default.
 - **MP4 video (H.264)**
@@ -633,6 +653,15 @@ This tab contains a single setting: **Default format**, that is, the format into
 - **M4A audio**
 
 This format is applied by default to every new download; you can always change it on a case-by-case basis when adding a video.
+
+**Audio description (france.tv, Arte)** — controls what DownAccess does with the audio tracks when a video on these two sites offers several (original version, audio description...). Four choices:
+
+- **Ask every time**: DownAccess shows the track chooser window on every relevant download. This is the default.
+- **Audio description only**: automatically takes the audio description track when it exists.
+- **Original version + audio description**: puts both tracks in the file (for a video); for an audio download, the audio description is kept.
+- **Original version only**: automatically takes the regular track, without audio description.
+
+With one of the three automatic modes, you are no longer asked: the track or tracks are chosen for you.
 
 ### Subtitles tab
 

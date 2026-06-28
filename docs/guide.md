@@ -177,21 +177,26 @@ DownAccess intègre un moteur de recherche : vous pouvez trouver des vidéos et 
 
 Appuyez sur **Ctrl+F**, ou ouvrez le menu et choisissez **Rechercher...**. La fenêtre **Rechercher des médias** s'ouvre, le curseur déjà placé dans le champ de saisie.
 
-Cette fenêtre comporte trois réglages :
+Cette fenêtre comporte plusieurs réglages :
 
 1. **Recherche** : saisissez ce que vous cherchez (le titre d'une chanson, le nom d'une vidéo, un artiste...).
-2. **Site** : choisissez où chercher. Deux sites sont proposés :
+2. **Site** : choisissez où chercher. Quatre sites sont proposés :
    - **YouTube** (réglage par défaut)
    - **SoundCloud**
-3. **Résultats** : indiquez combien de résultats afficher, de 1 à 25. La valeur par défaut est **8**.
+   - **france.tv**
+   - **Arte**
+3. **Type** : pour YouTube uniquement, vous pouvez restreindre la recherche à un type de résultat — **Tous types**, **Vidéos**, **Playlists** ou **Chaînes**. Pour les autres sites, ce réglage n'a pas d'effet.
+4. **Résultats** : indiquez combien de résultats afficher, de 1 à 25. La valeur par défaut est **8**.
 
 Validez avec le bouton **OK**, ou appuyez simplement sur **Entrée** depuis le champ de recherche.
 
-> Note d'accessibilité : à l'ouverture, votre lecteur d'écran annonce le rôle de la fenêtre et vous rappelle les trois réglages. Le focus démarre directement dans le champ de saisie, vous pouvez taper aussitôt.
+> Note d'accessibilité : à l'ouverture, votre lecteur d'écran annonce le rôle de la fenêtre et vous rappelle les réglages. Le focus démarre directement dans le champ de saisie, vous pouvez taper aussitôt.
 
 ### Parcourir et choisir les résultats
 
 Les résultats s'affichent dans la fenêtre **Résultats**, sous forme de liste. Pour chaque entrée, vous trouvez son état de sélection, son **titre**, sa **durée**, son **auteur** et son **type** (vidéo, piste, playlist ou chaîne).
+
+> Sur **france.tv**, les vidéos qui proposent une audiodescription le signalent dans leur titre (mention « — Audiodescription »), pour les repérer d'un coup d'œil.
 
 Pour sélectionner les médias à télécharger :
 
@@ -329,6 +334,19 @@ L'option « Mode des sous-titres » définit comment les sous-titres sont relié
 - **Fichier séparé (.srt à côté de la vidéo)** — les sous-titres sont enregistrés dans un fichier distinct, placé à côté de la vidéo. Vous pouvez les activer dans votre lecteur, ou les ouvrir comme un simple fichier texte.
 - **Inclus dans le conteneur (piste désactivable)** — les sous-titres sont intégrés au fichier vidéo, sous forme d'une piste que vous pouvez activer ou désactiver à la lecture.
 - **Incrustés dans l'image (ré-encode la vidéo, plus lent)** — les sous-titres sont gravés de façon permanente dans l'image. Cette option ré-encode la vidéo, ce qui prend plus de temps et ne peut plus être annulé.
+
+### Choisir la piste audio et l'audiodescription (france.tv, Arte)
+
+Sur **france.tv** et **Arte**, une même vidéo propose souvent plusieurs pistes audio : la version française, parfois la version originale, et surtout l'**audiodescription** (la voix qui décrit l'image, précieuse pour les personnes déficientes visuelles).
+
+Quand vous téléchargez une telle vidéo, DownAccess vous laisse choisir la ou les pistes :
+
+- **Pour une vidéo** : vous pouvez cocher plusieurs pistes ; elles sont alors toutes placées dans le même fichier, et vous passez de l'une à l'autre dans votre lecteur.
+- **Pour un téléchargement audio (MP3 ou M4A)** : un fichier audio ne contient qu'une seule piste, vous en choisissez donc une seule.
+
+Par défaut, DownAccess pose la question à chaque fois, via une petite fenêtre de choix qui s'ouvre juste avant le téléchargement.
+
+Si vous préférez ne plus être interrogé, vous pouvez définir un comportement **automatique** dans les préférences (onglet **Formats**, réglage **Audiodescription** — voir le chapitre Réglages). Par exemple, en choisissant « Audiodescription seule », DownAccess prendra automatiquement la piste d'audiodescription dès qu'elle existe, sans rien vous demander.
 
 ### La conversion a lieu après le téléchargement
 
@@ -625,7 +643,9 @@ Le bouton **Réinitialiser tous les avertissements** réaffiche les messages d'a
 
 ### Onglet Formats
 
-Cet onglet contient un seul réglage : **Format par défaut**, c'est-à-dire le format dans lequel vos téléchargements seront convertis. Quatre choix sont proposés :
+Cet onglet contient deux réglages.
+
+**Format par défaut** — le format dans lequel vos téléchargements seront convertis. Quatre choix sont proposés :
 
 - **Aucun (fichier d'origine)** : conserve le fichier tel quel, sans conversion. C'est la valeur par défaut.
 - **Vidéo MP4 (H.264)**
@@ -633,6 +653,15 @@ Cet onglet contient un seul réglage : **Format par défaut**, c'est-à-dire le 
 - **Audio M4A**
 
 Ce format est appliqué par défaut à chaque nouveau téléchargement ; vous pouvez toujours le modifier au cas par cas au moment d'ajouter une vidéo.
+
+**Audiodescription (france.tv, Arte)** — détermine ce que DownAccess fait des pistes audio quand une vidéo de ces deux sites en propose plusieurs (version originale, audiodescription...). Quatre choix :
+
+- **Demander à chaque fois** : DownAccess affiche la fenêtre de choix de piste à chaque téléchargement concerné. C'est la valeur par défaut.
+- **Audiodescription seule** : prend automatiquement la piste d'audiodescription lorsqu'elle existe.
+- **Version originale + audiodescription** : place les deux pistes dans le fichier (pour une vidéo) ; pour un téléchargement audio, l'audiodescription est conservée.
+- **Version originale seule** : prend automatiquement la piste normale, sans audiodescription.
+
+Avec l'un des trois modes automatiques, vous n'êtes plus interrogé : la ou les pistes sont choisies pour vous.
 
 ### Onglet Sous-titres
 
