@@ -1,13 +1,15 @@
-## DownAccess 0.1.28
+## DownAccess 0.1.29
 
 ### What's new
 
-- **Audio track selection on france.tv and Arte.** When a video offers several audio tracks — for example the French version and audio description —, DownAccess now asks which one to download. For a video, you can even keep several in the same file and switch between them in your player. For an audio download (MP3 or M4A), you pick a single track.
+- **Search france.tv and Arte directly.** You can now search for videos on france.tv and Arte right from the search window, just like YouTube and SoundCloud. Pick the site, type your search, check the results and start downloading. On france.tv, videos that offer audio description are flagged in the list.
+- **Automatic audio description choice.** In Preferences (Formats tab), you can decide once and for all what DownAccess does with audio tracks on france.tv and Arte: ask every time, take only the audio description, keep the original version plus audio description, or only the original version. No more choosing on every download.
 
 ### Improvements
 
-- **More reliable progress.** On these sites, the progress bar now moves from the very start of the download, including during the video.
-- **File already present.** If a file is already in your folder, DownAccess clearly shows it with an "Already downloaded" status instead of pretending to download it again.
+- **More reliable progress.** The progress bar no longer gets stuck (neither on "Preparing" nor partway through) for france.tv and Arte videos, including when several audio tracks are downloaded.
+- **Automatic cleanup.** When you cancel a download, temporary files are now removed automatically, so your folder stays clean.
+- **More robust.** A download that fails unexpectedly no longer blocks the queue, and updates to the internal tool (yt-dlp) are more reliable.
 
 ### Note
 

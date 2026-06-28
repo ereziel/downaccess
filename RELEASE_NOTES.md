@@ -1,13 +1,15 @@
-## DownAccess 0.1.28
+## DownAccess 0.1.29
 
 ### Nouveautés
 
-- **Choix de la piste audio sur france.tv et Arte.** Quand une vidéo propose plusieurs pistes audio — par exemple la version française et l'audiodescription —, DownAccess vous demande désormais laquelle télécharger. Pour une vidéo, vous pouvez même en garder plusieurs dans le même fichier et passer de l'une à l'autre dans votre lecteur. Pour un téléchargement audio (MP3 ou M4A), vous choisissez une seule piste.
+- **Recherche directe sur france.tv et Arte.** Vous pouvez désormais rechercher des vidéos sur france.tv et Arte directement depuis la fenêtre de recherche, comme pour YouTube et SoundCloud. Choisissez le site, saisissez votre recherche, cochez les résultats et lancez le téléchargement. Sur france.tv, les vidéos qui proposent une audiodescription sont signalées dans la liste.
+- **Choix automatique de l'audiodescription.** Dans les Préférences (onglet Formats), vous pouvez décider une fois pour toutes ce que DownAccess fait des pistes audio sur france.tv et Arte : demander à chaque fois, prendre uniquement l'audiodescription, garder la version originale et l'audiodescription, ou seulement la version originale. Plus besoin de choisir à chaque téléchargement.
 
 ### Améliorations
 
-- **Progression plus fiable.** Sur ces sites, la barre de progression avance désormais dès le début du téléchargement, y compris pendant la vidéo.
-- **Fichier déjà présent.** Si un fichier est déjà dans votre dossier, DownAccess l'indique clairement avec le statut « Déjà téléchargé » au lieu de faire croire à un nouveau téléchargement.
+- **Progression plus fiable.** La barre de progression ne reste plus bloquée (ni sur « Préparation », ni en milieu de téléchargement) pour les vidéos france.tv et Arte, y compris lorsque plusieurs pistes audio sont téléchargées.
+- **Nettoyage automatique.** Lorsque vous annulez un téléchargement, les fichiers temporaires sont maintenant supprimés automatiquement : votre dossier reste propre.
+- **Plus robuste.** Un téléchargement qui échoue de façon imprévue ne bloque plus la file d'attente, et la mise à jour de l'outil interne (yt-dlp) est plus fiable.
 
 ### Note
 
