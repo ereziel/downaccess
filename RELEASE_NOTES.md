@@ -1,8 +1,13 @@
-## DownAccess 0.1.27
+## DownAccess 0.1.28
 
 ### Nouveautés
 
-- **Téléchargements YouTube plus fiables.** Il arrivait qu'une vidéo refuse de se télécharger avec une erreur, alors que tout fonctionnait quelques instants plus tard : YouTube bloque parfois temporairement l'accès, sans aucun rapport avec votre connexion. DownAccess réessaie désormais automatiquement (jusqu'à trois fois) avant d'afficher une erreur. Dans la grande majorité des cas, le fichier est récupéré sans que vous ayez à intervenir.
+- **Choix de la piste audio sur france.tv et Arte.** Quand une vidéo propose plusieurs pistes audio — par exemple la version française et l'audiodescription —, DownAccess vous demande désormais laquelle télécharger. Pour une vidéo, vous pouvez même en garder plusieurs dans le même fichier et passer de l'une à l'autre dans votre lecteur. Pour un téléchargement audio (MP3 ou M4A), vous choisissez une seule piste.
+
+### Améliorations
+
+- **Progression plus fiable.** Sur ces sites, la barre de progression avance désormais dès le début du téléchargement, y compris pendant la vidéo.
+- **Fichier déjà présent.** Si un fichier est déjà dans votre dossier, DownAccess l'indique clairement avec le statut « Déjà téléchargé » au lieu de faire croire à un nouveau téléchargement.
 
 ### Note
 

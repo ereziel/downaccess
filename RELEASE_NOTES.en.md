@@ -1,8 +1,13 @@
-## DownAccess 0.1.27
+## DownAccess 0.1.28
 
 ### What's new
 
-- **More reliable YouTube downloads.** Sometimes a video would refuse to download with an error, even though everything worked fine moments later: YouTube occasionally blocks access temporarily, with nothing to do with your connection. DownAccess now automatically retries (up to three times) before showing an error. In the vast majority of cases, the file is retrieved without you having to do anything.
+- **Audio track selection on france.tv and Arte.** When a video offers several audio tracks — for example the French version and audio description —, DownAccess now asks which one to download. For a video, you can even keep several in the same file and switch between them in your player. For an audio download (MP3 or M4A), you pick a single track.
+
+### Improvements
+
+- **More reliable progress.** On these sites, the progress bar now moves from the very start of the download, including during the video.
+- **File already present.** If a file is already in your folder, DownAccess clearly shows it with an "Already downloaded" status instead of pretending to download it again.
 
 ### Note
 
