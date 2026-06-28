@@ -542,7 +542,7 @@ class Downloader:
         # via la taille des .part, et tue ffmpeg sur annulation.
         monitor_stop = threading.Event()
         monitor = self._make_disk_monitor(
-            download_id, on_progress, dest, title, expected_bytes,
+            download_id, on_progress, temp_dir, title, expected_bytes,
             hook_state, stop_event, monitor_stop)
         monitor.start()
 
@@ -773,7 +773,7 @@ class Downloader:
         self,
         download_id: str,
         on_progress: OnProgressCallback,
-        dest: str,
+        temp_dir: str,
         title: str,
         expected_bytes: int,
         hook_state: dict,
@@ -811,12 +811,24 @@ class Downloader:
                 return 0
             import glob
             total = 0
-            pattern = os.path.join(dest, "**", prefix + "*.part")
-            for path in glob.glob(pattern, recursive=True):
-                try:
-                    total += os.path.getsize(path)
-                except OSError:
-                    pass
+            # Les .part vivent dans temp_dir (paths['temp']). On part de ce dossier
+            # LITTERAL : sinon glob('dest/**') ignore .da-tmp (glob saute les
+            # composants commencant par un point), et la progression reste figee
+            # sur « Preparation » pour les flux HLS sans hook (france.tv/arte).
+            patterns = [
+                os.path.join(temp_dir, prefix + "*.part"),
+                os.path.join(temp_dir, "**", prefix + "*.part"),
+            ]
+            seen: set[str] = set()
+            for pattern in patterns:
+                for path in glob.glob(pattern, recursive=True):
+                    if path in seen:
+                        continue
+                    seen.add(path)
+                    try:
+                        total += os.path.getsize(path)
+                    except OSError:
+                        pass
             return total
 
         def run() -> None:
