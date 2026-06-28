@@ -2,6 +2,7 @@ import io
 import logging
 import os
 import re
+import shutil
 import tempfile
 import time
 import threading
@@ -380,16 +381,26 @@ class Downloader:
         else:
             name_part = "%(title)s.%(ext)s"
 
+        # outtmpl RELATIF (sans prefixe dest) : le dossier final est passe via
+        # paths['home'] ci-dessous. Cela permet d'isoler les fichiers
+        # intermediaires (.part, fragments, .ytdl) dans paths['temp'] sans que le
+        # fichier final n'y aille.
         if by_site and by_playlist:
             pl_safe = _sanitize_dirname(playlist_title)
-            outtmpl = f"{dest}/%(extractor_key)s/{pl_safe}/{name_part}"
+            outtmpl = f"%(extractor_key)s/{pl_safe}/{name_part}"
         elif by_site:
-            outtmpl = f"{dest}/%(extractor_key)s/{name_part}"
+            outtmpl = f"%(extractor_key)s/{name_part}"
         elif by_playlist:
             pl_safe = _sanitize_dirname(playlist_title)
-            outtmpl = f"{dest}/{pl_safe}/{name_part}"
+            outtmpl = f"{pl_safe}/{name_part}"
         else:
-            outtmpl = f"{dest}/{name_part}"
+            outtmpl = name_part
+
+        # Fichiers intermediaires isoles dans un dossier temp dedie a CE
+        # telechargement, dans le dossier de destination (meme disque -> le
+        # deplacement final est un renommage instantane). Supprime en fin de
+        # traitement (succes, erreur OU annulation) : plus de .part orphelins.
+        temp_dir = os.path.join(dest, ".da-tmp", download_id[:8])
 
         # Garde-fou Windows MAX_PATH (260 caracteres) : certains titres sont
         # si longs (ex. podcasts Radio France dont le site duplique le titre)
@@ -397,8 +408,11 @@ class Downloader:
         # "No such file or directory". On borne la longueur du nom de fichier
         # pour que le chemin reste sous la limite, quelle que soit la
         # profondeur du dossier de telechargement.
-        _dir_prefix = outtmpl.rsplit("/", 1)[0].replace("%(extractor_key)s", "x" * 30)
-        _trim_len = max(50, 240 - len(_dir_prefix) - len("/.m4a.part") - 4)
+        _rel_dir = outtmpl.rsplit("/", 1)[0] if "/" in outtmpl else ""
+        _final_prefix = os.path.join(dest, _rel_dir).replace("%(extractor_key)s", "x" * 30)
+        # Le .part vit dans temp_dir : on borne selon le plus long des deux chemins.
+        _eff_prefix = max(_final_prefix, temp_dir, key=len)
+        _trim_len = max(50, 240 - len(_eff_prefix) - len("/.m4a.part") - 4)
 
         log_buf = io.StringIO() if verbose else None
 
@@ -432,6 +446,7 @@ class Downloader:
 
         opts = {
             "outtmpl":        outtmpl,
+            "paths":          {"home": dest, "temp": temp_dir},
             "trim_file_name": _trim_len,
             "quiet":          not verbose,
             "no_warnings":    not verbose,
@@ -596,6 +611,16 @@ class Downloader:
                     os.unlink(cookie_jar_path)
                 except OSError:
                     pass
+            # Menage des fichiers intermediaires (.part, fragments, .ytdl) : a ce
+            # stade le telechargement est termine (succes/erreur/annulation), plus
+            # rien n'ecrit dans temp_dir. Le fichier final est deja dans dest.
+            shutil.rmtree(temp_dir, ignore_errors=True)
+            # Retire le dossier parent .da-tmp s'il est vide (echoue sans bruit si
+            # un autre telechargement concurrent y a encore un sous-dossier).
+            try:
+                os.rmdir(os.path.dirname(temp_dir))
+            except OSError:
+                pass
 
         if log_buf is not None and on_verbose_log is not None:
             on_verbose_log(log_buf.getvalue())
@@ -1014,7 +1039,6 @@ class _BurnSubtitlesPP(yt_dlp.postprocessor.PostProcessor):
         self._ffmpeg_path = ffmpeg_path
 
     def run(self, info):
-        import shutil
         import subprocess as sp
         from pathlib import Path
 
