@@ -43,6 +43,19 @@ def _write_cookie_jar(cookie_header: str, url: str) -> str:
 # La résolution primant, un HLS réellement plus haut l'emporte malgré tout.
 _CUSTOM_VIDEO_SORT = ["res", "fps", "vcodec", "proto:http_dash_segments"]
 
+# Cles d'options yt-dlp construites par l'appli : les options « brutes » saisies
+# par l'utilisateur (Preferences > Avance) ne doivent jamais les ecraser, sous
+# peine de casser le telechargement (selection de format, dossiers, hooks...).
+_PROTECTED_OPTS = frozenset({
+    "format", "format_sort", "outtmpl", "paths", "trim_file_name",
+    "postprocessors", "progress_hooks", "postprocessor_hooks",
+    "merge_output_format", "allow_multiple_audio_streams",
+    "concurrent_fragment_downloads", "js_runtimes", "extractor_args",
+    "ffmpeg_location", "cookiefile", "cookiesfrombrowser",
+    "writesubtitles", "writeautomaticsub", "subtitleslangs", "subtitlesformat",
+    "skip_download", "outtmpl_na_placeholder",
+})
+
 
 # Hôtes YouTube reconnus pour la normalisation des URLs de chaîne
 _YT_HOSTS = ("youtube.com", "www.youtube.com", "m.youtube.com")
@@ -442,7 +455,7 @@ class Downloader:
         # quand le dernier événement hook a eu lieu (pour le moniteur disque).
         hook_state = {"files": set(), "completed": 0, "done_bytes": 0,
                       "any_download": False, "last_file": "", "last_hook_ts": 0.0,
-                      "max_pct": 0.0}
+                      "max_pct": 0.0, "processing": False}
 
         opts = {
             "outtmpl":        outtmpl,
@@ -454,7 +467,7 @@ class Downloader:
             "progress_hooks": [self._make_hook(download_id, on_progress, stop_event,
                                                pause_event, total_parts, expected_bytes,
                                                hook_state)],
-            "postprocessor_hooks": [self._make_pp_hook(download_id, on_progress)],
+            "postprocessor_hooks": [self._make_pp_hook(download_id, on_progress, hook_state)],
             "js_runtimes":    get_js_runtimes_opt(),
             "concurrent_fragment_downloads": fragments if fragments > 1 else 1,
             # Résilience réseau : sur une connexion instable, un stall doit durer
@@ -512,10 +525,16 @@ class Downloader:
         _apply_format(opts, format_spec, format_id, audio_groups)
         _apply_subtitles(opts, eff_settings)
 
-        # Options yt-dlp supplémentaires (raw)
+        # Options yt-dlp supplémentaires (raw) : drapeaux booléens uniquement
+        # (ex. --no-mtime, --write-thumbnail). On protege les options que l'appli
+        # construit deliberement : sans ca, une saisie comme « --format » mettrait
+        # opts["format"] = True et casserait le telechargement.
         for extra in self._settings.get("ytdlp_extra_opts", []):
             if extra.startswith("--"):
                 key = extra.lstrip("-").replace("-", "_")
+                if key in _PROTECTED_OPTS:
+                    _log.warning("Option yt-dlp ignoree (protegee) : %s", extra)
+                    continue
                 opts[key] = True
 
         subtitle_warning: str | None = None
@@ -757,11 +776,18 @@ class Downloader:
                     ))
         return hook
 
-    def _make_pp_hook(self, download_id: str, on_progress: OnProgressCallback):
+    def _make_pp_hook(self, download_id: str, on_progress: OnProgressCallback,
+                      hook_state: dict):
         """Hook de post-traitement : signale « Traitement » pendant la fusion /
-        conversion ffmpeg (muxing), après le téléchargement des flux."""
+        conversion ffmpeg (muxing), après le téléchargement des flux.
+
+        Pose `hook_state['processing']` pour que le moniteur disque cesse
+        d'emettre des evenements « telechargement » (sinon, sans hook recent, il
+        re-emettrait ~99 % toutes les 0,5 s et masquerait le statut « Traitement »
+        pendant toute la fusion d'un gros fichier)."""
         def pp_hook(d: dict) -> None:
             if d.get("status") == "started":
+                hook_state["processing"] = True
                 on_progress(DownloadProgress(
                     download_id=download_id,
                     percent=100.0,
@@ -828,9 +854,10 @@ class Downloader:
                     _kill_ffmpeg_children()
                     killed = True
                     continue
-                # Repli progression : seulement si aucun hook récent (<2 s) et
-                # qu'on connaît la taille cible.
-                if expected_bytes <= 0:
+                # Repli progression : seulement si aucun hook récent (<2 s), qu'on
+                # connaît la taille cible, et que la fusion ffmpeg n'a pas commence
+                # (sinon on masquerait le statut « Traitement »).
+                if expected_bytes <= 0 or hook_state.get("processing"):
                     continue
                 if time.monotonic() - hook_state.get("last_hook_ts", 0.0) < 2.0:
                     continue
