@@ -15,6 +15,20 @@ def get_ytdlp_dir() -> Path:
     return Path(appdata) / "DownAccess" / "yt-dlp"
 
 
+def _version_key(v: str) -> tuple:
+    """Cle de tri numerique d'une version yt-dlp (ex. '2026.3.17').
+
+    Indispensable : un tri lexicographique de chaines classe '2026.3.17' APRES
+    '2026.10.5' (car '3' > '1'), ce qui ferait choisir la mauvaise version et
+    re-telecharger yt-dlp a chaque demarrage. On compare composant par composant
+    en entiers (les parties non numeriques retombent sur 0)."""
+    parts = []
+    for chunk in str(v or "").split("."):
+        num = "".join(ch for ch in chunk if ch.isdigit())
+        parts.append(int(num) if num else 0)
+    return tuple(parts)
+
+
 def get_installed_version() -> str | None:
     """
     Lit la version depuis le dist-info dans AppData (sans cache importlib).
@@ -35,7 +49,7 @@ def get_installed_version() -> str | None:
             except Exception:
                 pass
         if versions:
-            return max(versions)
+            return max(versions, key=_version_key)
     # Fallback venv
     try:
         import importlib.metadata
@@ -148,14 +162,30 @@ def _install_wheel(target: Path, version: str) -> None:
     with urllib.request.urlopen(wreq, timeout=120) as r:
         payload = r.read()
 
-    # Nettoyer l'ancienne extraction du paquet pour ne pas laisser de fichiers
-    # obsoletes (l'extraction de zip ecrase mais ne supprime pas les disparus).
-    pkg_dir = target / "yt_dlp"
-    if pkg_dir.exists():
-        shutil.rmtree(pkg_dir, ignore_errors=True)
-
-    with zipfile.ZipFile(io.BytesIO(payload)) as zf:
-        zf.extractall(target)
+    # Installation ATOMIQUE : on extrait d'abord dans un dossier temporaire (la
+    # partie longue/faillible = reseau + extraction), puis on bascule chaque
+    # element vers `target` par un deplacement local rapide. Si l'operation est
+    # interrompue pendant le telechargement/extraction, l'installation existante
+    # reste intacte (avant : rmtree puis extract laissait yt_dlp/ casse en cas
+    # de coupure au mauvais moment).
+    import tempfile
+    staging = Path(tempfile.mkdtemp(dir=str(target), prefix=".staging-"))
+    try:
+        with zipfile.ZipFile(io.BytesIO(payload)) as zf:
+            zf.extractall(staging)
+        for item in staging.iterdir():
+            dest = target / item.name
+            if dest.exists():
+                if dest.is_dir():
+                    shutil.rmtree(dest, ignore_errors=True)
+                else:
+                    try:
+                        dest.unlink()
+                    except OSError:
+                        pass
+            shutil.move(str(item), str(dest))
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)
 
 
 def _cleanup_old_dist_info(ytdlp_dir: Path, keep_version: str) -> None:

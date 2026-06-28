@@ -204,6 +204,22 @@ class QueueManager:
                 t.start()
 
     def _worker(self, item: QueueItem) -> None:
+        """Enveloppe robuste : quoi qu'il arrive, l'item est libéré (`_finish`)
+        et signalé en erreur si une exception inattendue survient. Sans ça, une
+        exception non prévue tuerait le thread sans appeler `_finish` -> créneau
+        de concurrence perdu et ligne figée sur « Préparation »."""
+        dl_id = item.download_id
+        try:
+            self._run_worker(item)
+        except Exception as exc:
+            _log.exception("Erreur inattendue worker id=%s", dl_id)
+            if not item.stop_event.is_set():
+                self._post(self._on_error, dl_id, str(exc),
+                           isinstance(exc, LoginRequiredError))
+        finally:
+            self._finish(dl_id)
+
+    def _run_worker(self, item: QueueItem) -> None:
         dl = Downloader(self._settings)
         dl_id = item.download_id
         _log.info("Démarrage worker id=%s url=%s", dl_id, item.url)
@@ -231,7 +247,6 @@ class QueueManager:
             info.download_id = dl_id
             if info.is_playlist:
                 self._post(self._on_playlist or self._on_info, info)
-                self._finish(dl_id)
                 return
             self._post(self._on_info, info)
         else:
@@ -239,25 +254,21 @@ class QueueManager:
                 info = dl.fetch_info(dl_id, item.url, use_cookies=item.use_cookies,
                                      referer=item.referer, cookies=item.cookies)
                 if not info:
-                    self._finish(dl_id)
                     return
                 if info.is_playlist:
                     # Déléguer la gestion de la playlist à l'UI
                     _log.info("Playlist détectée id=%s url=%s", dl_id, item.url)
                     self._post(self._on_playlist or self._on_info, info)
-                    self._finish(dl_id)
                     return
                 self._post(self._on_info, info)
             except DownloadError as exc:
                 _log.error("Erreur fetch_info id=%s — %s", dl_id, exc)
                 self._post(self._on_error, dl_id, str(exc),
                            isinstance(exc, LoginRequiredError))
-                self._finish(dl_id)
                 return
 
         if item.stop_event.is_set():
             _log.info("Annulé avant téléchargement id=%s", dl_id)
-            self._finish(dl_id)
             return
 
         # 2. Téléchargement
@@ -299,8 +310,6 @@ class QueueManager:
                            isinstance(exc, LoginRequiredError))
             else:
                 _log.info("Annulé pendant téléchargement id=%s", dl_id)
-
-        self._finish(dl_id)
 
     def _finish(self, download_id: str) -> None:
         with self._lock:
