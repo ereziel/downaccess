@@ -1316,6 +1316,26 @@ class MainWindow(wx.Frame):
             search_type  = dlg.get_search_type()
             n            = dlg.get_n()
 
+        self.set_status(_("Recherche en cours : {query}…").format(query=query))
+        speech.speak(_("Recherche sur {site}…").format(site=site_label))
+
+        import threading
+
+        result = {}
+
+        # france.tv / Arte : API HTTP dédiée (pas de préfixe de recherche yt-dlp).
+        if site_prefix in ("francetv", "arte"):
+            def fetch():
+                try:
+                    from app.core import i18n, site_search
+                    result["entries"] = site_search.search(
+                        site_prefix, query, n, i18n.get_current_language_code())
+                except Exception as exc:
+                    result["error"] = str(exc)
+                wx.CallAfter(self._on_search_done, site_label, site_prefix, result)
+            threading.Thread(target=fetch, daemon=True).start()
+            return
+
         if site_prefix == "ytsearch" and search_type in _YT_SEARCH_SP:
             # Filtre par type via la page de résultats YouTube (paramètre `sp`).
             import urllib.parse
@@ -1323,12 +1343,6 @@ class MainWindow(wx.Frame):
                 {"search_query": query, "sp": _YT_SEARCH_SP[search_type]})
         else:
             search_url = f"{site_prefix}{n}:{query}"
-        self.set_status(_("Recherche en cours : {query}…").format(query=query))
-        speech.speak(_("Recherche sur {site}…").format(site=site_label))
-
-        import threading
-
-        result = {}
 
         def fetch():
             try:
@@ -1349,11 +1363,11 @@ class MainWindow(wx.Frame):
                 result["entries"] = entries
             except Exception as exc:
                 result["error"] = str(exc)
-            wx.CallAfter(self._on_search_done, site_label, result)
+            wx.CallAfter(self._on_search_done, site_label, site_prefix, result)
 
         threading.Thread(target=fetch, daemon=True).start()
 
-    def _on_search_done(self, site_label: str, result: dict) -> None:
+    def _on_search_done(self, site_label: str, site_prefix: str, result: dict) -> None:
         if "error" in result:
             self.set_status(_("Erreur lors de la recherche."))
             wx.MessageBox(
@@ -1376,20 +1390,28 @@ class MainWindow(wx.Frame):
             selected = dlg.get_selected_entries()
             fmt      = dlg.get_format()
 
+        is_custom = site_prefix in ("francetv", "arte")
         enqueued = 0
         for entry in selected:
             url = entry.get("webpage_url") or entry.get("url") or ""
             # yt-dlp peut retourner un ID nu sans schéma en mode extract_flat
-            if url and not url.startswith("http"):
+            if url and not url.startswith("http") and not url.startswith("francetv:"):
                 ie_key = (entry.get("ie_key") or entry.get("extractor_key") or "").lower()
                 vid_id = entry.get("id", "") or url
                 if "youtube" in ie_key or not ie_key:
                     url = f"https://www.youtube.com/watch?v={vid_id}"
                 else:
                     url = ""
-            if url:
+            if not url:
+                continue
+            # Sites personnalisés : une vidéo unique passe par le choix de piste
+            # audio (français / audiodescription) ; les collections (playlists)
+            # suivent le flux normal (yt-dlp les développe en épisodes).
+            if is_custom and entry.get("_dl_type") == "video":
+                self._enqueue_with_audio_track_selection(url, fmt)
+            else:
                 self._enqueue_url(url, format_spec=fmt)
-                enqueued += 1
+            enqueued += 1
 
         n = enqueued
         if n > 1:

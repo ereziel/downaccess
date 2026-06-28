@@ -7,10 +7,14 @@ import wx
 from app.core import speech
 from app.ui.player_dialog import PlayerDialog
 
-# Sites supportés : (label affiché, préfixe yt-dlp)
+# Sites supportés : (label affiché, clé interne).
+# Clés yt-dlp (ytsearch/scsearch) = préfixe de recherche yt-dlp.
+# Clés site (francetv/arte) = API HTTP dédiée (cf. app/core/site_search.py).
 _SITES = [
     ("YouTube",    "ytsearch"),
     ("SoundCloud", "scsearch"),
+    ("france.tv",  "francetv"),
+    ("Arte",       "arte"),
 ]
 
 
@@ -332,6 +336,8 @@ class SearchResultsDialog(wx.Dialog):
     def _entry_url(self, entry: dict) -> str:
         """Reconstruit l'URL web d'une entrée."""
         url = entry.get("webpage_url") or entry.get("url") or ""
+        if url.startswith("francetv:"):
+            return ""  # schéma interne yt-dlp : pas d'aperçu navigateur possible
         if url and not url.startswith("http"):
             ie_key = (entry.get("ie_key") or entry.get("extractor_key") or "").lower()
             vid_id = entry.get("id", "") or url
