@@ -35,6 +35,14 @@ def _write_cookie_jar(cookie_header: str, url: str) -> str:
     return path
 
 
+# Tri de sélection vidéo pour les sites à pistes audio (france.tv, arte) :
+# résolution/fps/codec d'abord (qualité réelle), puis, à égalité stricte, on
+# préfère le protocole DASH — téléchargeable nativement (progression segment par
+# segment + annulation), contrairement au HLS de france.tv qui passe par ffmpeg.
+# La résolution primant, un HLS réellement plus haut l'emporte malgré tout.
+_CUSTOM_VIDEO_SORT = ["res", "fps", "vcodec", "proto:http_dash_segments"]
+
+
 # Hôtes YouTube reconnus pour la normalisation des URLs de chaîne
 _YT_HOSTS = ("youtube.com", "www.youtube.com", "m.youtube.com")
 
@@ -84,6 +92,7 @@ class DownloadInfo:
     title: str = ""
     site: str = ""
     fmt: str = ""
+    duration: float = 0.0   # durée en secondes (estimation taille si filesize absent)
     raw_formats: list = field(default_factory=list)
     is_playlist: bool = False
     playlist_entries: list = field(default_factory=list)
@@ -313,6 +322,7 @@ class Downloader:
                 title=info.get("title") or url,
                 site=info.get("extractor_key") or info.get("extractor") or "—",
                 fmt=_describe_format(info),
+                duration=float(info.get("duration") or 0),
                 raw_formats=info.get("formats") or [],
             )
         except yt_dlp.utils.DownloadError as exc:
@@ -339,6 +349,9 @@ class Downloader:
         pause_event: threading.Event | None = None,
         format_spec: str = "auto",
         format_id: str | None = None,
+        audio_groups: list[list[str]] | None = None,
+        expected_bytes: int = 0,
+        title: str = "",
         referer: str | None = None,
         cookies: str | None = None,
         verbose: bool = False,
@@ -389,7 +402,33 @@ class Downloader:
 
         log_buf = io.StringIO() if verbose else None
 
+        # yt-dlp télécharge les flux à la suite (vidéo puis audio, +1 par piste
+        # audio supplémentaire) et la barre repartirait de zéro à chaque flux.
+        # On estime le nombre de parties pour présenter UNE progression continue
+        # 0->100 (auto-corrigée si l'estimation est trop basse). Estimation :
+        #   - format manuel / sous-titres seuls : 1
+        #   - audio seul (mp3/m4a) sans pistes choisies : 1
+        #   - pistes audio choisies : N (audio seul) ou N+1 (avec vidéo)
+        #   - vidéo standard : 2 (vidéo + audio à fusionner)
+        audio_only = format_spec in ("mp3", "m4a")
+        if format_id or format_spec == "subtitles_only":
+            total_parts = 1
+        elif audio_groups:
+            n = len([g for g in audio_groups if g])
+            total_parts = n + (0 if audio_only else 1)
+        elif audio_only:
+            total_parts = 1
+        else:
+            total_parts = 2
+
         fragments = self._settings.get("concurrent_fragments", 1)
+
+        # État partagé du hook de progression : permet de savoir, après coup, si
+        # un vrai téléchargement a eu lieu (sinon = fichier déjà présent), et
+        # quand le dernier événement hook a eu lieu (pour le moniteur disque).
+        hook_state = {"files": set(), "completed": 0, "done_bytes": 0,
+                      "any_download": False, "last_file": "", "last_hook_ts": 0.0,
+                      "max_pct": 0.0}
 
         opts = {
             "outtmpl":        outtmpl,
@@ -397,7 +436,10 @@ class Downloader:
             "quiet":          not verbose,
             "no_warnings":    not verbose,
             "verbose":        verbose,
-            "progress_hooks": [self._make_hook(download_id, on_progress, stop_event, pause_event)],
+            "progress_hooks": [self._make_hook(download_id, on_progress, stop_event,
+                                               pause_event, total_parts, expected_bytes,
+                                               hook_state)],
+            "postprocessor_hooks": [self._make_pp_hook(download_id, on_progress)],
             "js_runtimes":    get_js_runtimes_opt(),
             "concurrent_fragment_downloads": fragments if fragments > 1 else 1,
             # Résilience réseau : sur une connexion instable, un stall doit durer
@@ -452,7 +494,7 @@ class Downloader:
             eff_settings["auto_subtitles"] = True
             opts["skip_download"] = True
 
-        _apply_format(opts, format_spec, format_id)
+        _apply_format(opts, format_spec, format_id, audio_groups)
         _apply_subtitles(opts, eff_settings)
 
         # Options yt-dlp supplémentaires (raw)
@@ -478,6 +520,16 @@ class Downloader:
                         when="post_process",
                     )
                 ydl.download([url])
+
+        # Moniteur disque : filet de progression + annulation pour les flux qui
+        # NE passent PAS par les progress_hooks (vidéo HLS prise en charge par
+        # ffmpeg en interne = aucun hook pendant toute la vidéo). Comble la barre
+        # via la taille des .part, et tue ffmpeg sur annulation.
+        monitor_stop = threading.Event()
+        monitor = self._make_disk_monitor(
+            download_id, on_progress, dest, title, expected_bytes,
+            hook_state, stop_event, monitor_stop)
+        monitor.start()
 
         try:
             try:
@@ -538,6 +590,7 @@ class Downloader:
                 _log.error("Erreur inattendue id=%s url=%s — %s", download_id, url, exc)
                 _raise_download_error(str(exc), exc)
         finally:
+            monitor_stop.set()
             if cookie_jar_path:
                 try:
                     os.unlink(cookie_jar_path)
@@ -546,6 +599,25 @@ class Downloader:
 
         if log_buf is not None and on_verbose_log is not None:
             on_verbose_log(log_buf.getvalue())
+
+        # Fichier déjà présent : yt-dlp n'a téléchargé aucun octet (le hook
+        # 'finished' arrive sans aucun 'downloading' préalable). On le signale
+        # distinctement pour ne pas faire croire à un vrai téléchargement.
+        already_present = (
+            not opts.get("skip_download")
+            and format_spec != "subtitles_only"
+            and hook_state["completed"] > 0
+            and not hook_state["any_download"]
+        )
+        if already_present:
+            _log.info("Fichier déjà présent id=%s url=%s", download_id, url)
+            on_progress(DownloadProgress(
+                download_id=download_id,
+                percent=100.0,
+                status="already_downloaded",
+                filepath=hook_state["last_file"],
+            ))
+            return subtitle_warning
 
         _log.info("Téléchargement terminé id=%s url=%s", download_id, url)
         return subtitle_warning
@@ -560,7 +632,47 @@ class Downloader:
         on_progress: OnProgressCallback,
         stop_event: threading.Event,
         pause_event: threading.Event | None = None,
+        total_parts: int = 1,
+        expected_bytes: int = 0,
+        state: dict | None = None,
     ):
+        # Progression continue : yt-dlp télécharge les flux (vidéo, audio…) l'un
+        # après l'autre, chacun de 0 à 100 %. Pour une barre qui se remplit UNE
+        # seule fois :
+        #   - si on connaît la taille totale estimée (`expected_bytes`), on
+        #     pondère par les octets réels (la vidéo pesant l'essentiel, la barre
+        #     colle au temps réel) ;
+        #   - sinon, repli : on répartit chaque flux dans une tranche égale.
+        parts = max(1, total_parts)
+        if state is None:
+            state = {"files": set(), "completed": 0, "done_bytes": 0}
+        state.setdefault("any_download", False)
+        state.setdefault("last_file", "")
+        state.setdefault("last_hook_ts", 0.0)
+        state.setdefault("max_pct", 0.0)
+
+        def _monotonic(pct: float) -> float:
+            # La barre ne doit jamais reculer : un flux peut se terminer sans
+            # hook 'finished' (vidéo HLS via ffmpeg) → done_bytes ne le compte
+            # pas et le flux suivant recalculerait un pourcentage plus bas.
+            pct = max(pct, state["max_pct"])
+            state["max_pct"] = pct
+            return pct
+
+        def _pct(d: dict) -> float:
+            try:
+                return float(d.get("_percent_str", "0%").strip().replace("%", ""))
+            except ValueError:
+                return 0.0
+
+        def _part_equal_pct(d: dict) -> float:
+            tmpf = d.get("tmpfilename") or d.get("filename") or ""
+            if tmpf:
+                state["files"].add(tmpf)
+            idx = max(1, len(state["files"]))
+            denom = max(parts, idx)
+            return ((idx - 1) + _pct(d) / 100.0) / denom * 100.0
+
         def hook(d: dict) -> None:
             # Pause : bloquer jusqu'à reprise
             if pause_event:
@@ -571,30 +683,146 @@ class Downloader:
             if stop_event.is_set():
                 raise yt_dlp.utils.DownloadError(_("Annulé par l'utilisateur"))
 
+            state["last_hook_ts"] = time.monotonic()
             status = d.get("status")
             if status == "downloading":
-                pct   = d.get("_percent_str", "0%").strip().replace("%", "")
-                speed = d.get("_speed_str", "").strip()
-                total = d.get("_total_bytes_str") or d.get("_total_bytes_estimate_str") or ""
-                try:
-                    percent = float(pct)
-                except ValueError:
-                    percent = 0.0
+                state["any_download"] = True
+                if expected_bytes > 0:
+                    cur = d.get("downloaded_bytes") or 0
+                    pct = min(99.5, (state["done_bytes"] + cur) / expected_bytes * 100.0)
+                else:
+                    pct = _part_equal_pct(d)
+                pct = _monotonic(pct)
                 on_progress(DownloadProgress(
                     download_id=download_id,
-                    percent=percent,
-                    speed=speed,
-                    size=total,
+                    percent=pct,
+                    speed=d.get("_speed_str", "").strip(),
+                    size=d.get("_total_bytes_str") or d.get("_total_bytes_estimate_str") or "",
                     status="downloading",
                 ))
             elif status == "finished":
+                state["completed"] += 1
+                if expected_bytes > 0:
+                    state["done_bytes"] += d.get("total_bytes") or d.get("downloaded_bytes") or 0
+                filename = d.get("filename", "") or ""
+                if filename:
+                    state["last_file"] = filename
+                if state["completed"] >= parts:
+                    # Toutes les parties estimées sont faites -> 100 %.
+                    on_progress(DownloadProgress(
+                        download_id=download_id,
+                        percent=100.0,
+                        status="finished",
+                        filepath=filename,
+                    ))
+                else:
+                    # Une partie finie, pas l'ensemble : la barre continue, mais on
+                    # capture quand même le chemin (status=downloading + filepath).
+                    if expected_bytes > 0:
+                        pct = min(99.5, state["done_bytes"] / expected_bytes * 100.0)
+                    else:
+                        denom = max(parts, state["completed"])
+                        pct = state["completed"] / denom * 100.0
+                    pct = _monotonic(pct)
+                    on_progress(DownloadProgress(
+                        download_id=download_id,
+                        percent=pct,
+                        status="downloading",
+                        filepath=filename,
+                    ))
+        return hook
+
+    def _make_pp_hook(self, download_id: str, on_progress: OnProgressCallback):
+        """Hook de post-traitement : signale « Traitement » pendant la fusion /
+        conversion ffmpeg (muxing), après le téléchargement des flux."""
+        def pp_hook(d: dict) -> None:
+            if d.get("status") == "started":
                 on_progress(DownloadProgress(
                     download_id=download_id,
                     percent=100.0,
-                    status="finished",
-                    filepath=d.get("filename", "") or "",
+                    status="processing",
                 ))
-        return hook
+        return pp_hook
+
+    def _make_disk_monitor(
+        self,
+        download_id: str,
+        on_progress: OnProgressCallback,
+        dest: str,
+        title: str,
+        expected_bytes: int,
+        hook_state: dict,
+        stop_event: threading.Event,
+        monitor_stop: threading.Event,
+    ) -> threading.Thread:
+        """Thread de surveillance disque. Deux rôles, pour les flux qui ne
+        passent PAS par les progress_hooks (ex. vidéo HLS de france.tv prise en
+        charge par ffmpeg en interne — aucun hook pendant toute la vidéo) :
+
+        1. Progression de repli : tant qu'aucun hook n'a parlé récemment, somme
+           la taille des fichiers `.part` de ce téléchargement et fait avancer la
+           barre (pondérée par `expected_bytes`). S'efface dès que de vrais hooks
+           arrivent (ex. l'audio DASH), pour ne pas se télescoper avec eux.
+        2. Annulation : `stop_event` n'interrompt pas ffmpeg (le hook ne tourne
+           pas) ; on tue alors les processus ffmpeg enfants.
+        """
+        prefix = _sanitize_dirname(title)[:20] if title else ""
+
+        def _kill_ffmpeg_children() -> None:
+            try:
+                import psutil
+                me = psutil.Process()
+                for child in me.children(recursive=True):
+                    try:
+                        if "ffmpeg" in (child.name() or "").lower():
+                            child.kill()
+                    except psutil.Error:
+                        pass
+            except Exception:
+                pass
+
+        def _part_bytes() -> int:
+            if not prefix:
+                return 0
+            import glob
+            total = 0
+            pattern = os.path.join(dest, "**", prefix + "*.part")
+            for path in glob.glob(pattern, recursive=True):
+                try:
+                    total += os.path.getsize(path)
+                except OSError:
+                    pass
+            return total
+
+        def run() -> None:
+            killed = False
+            while not monitor_stop.is_set():
+                monitor_stop.wait(0.5)
+                if stop_event.is_set() and not killed:
+                    _kill_ffmpeg_children()
+                    killed = True
+                    continue
+                # Repli progression : seulement si aucun hook récent (<2 s) et
+                # qu'on connaît la taille cible.
+                if expected_bytes <= 0:
+                    continue
+                if time.monotonic() - hook_state.get("last_hook_ts", 0.0) < 2.0:
+                    continue
+                done = hook_state.get("done_bytes", 0)
+                cur = _part_bytes()
+                if cur <= 0:
+                    continue
+                pct = min(99.0, (done + cur) / expected_bytes * 100.0)
+                # Jamais en arrière (cf. _monotonic côté hook).
+                pct = max(pct, hook_state.get("max_pct", 0.0))
+                hook_state["max_pct"] = pct
+                on_progress(DownloadProgress(
+                    download_id=download_id,
+                    percent=pct,
+                    status="downloading",
+                ))
+
+        return threading.Thread(target=run, daemon=True)
 
 
 # ------------------------------------------------------------------
@@ -609,26 +837,126 @@ def _describe_format(info: dict) -> str:
     return ext
 
 
-def _apply_format(opts: dict, format_spec: str, format_id: str | None = None) -> None:
-    """Applique le format yt-dlp et les post-processeurs selon le choix."""
+def estimate_total_bytes(formats: list[dict], format_spec: str = "auto",
+                         format_id: str | None = None,
+                         audio_groups: list[list[str]] | None = None,
+                         duration: float = 0.0) -> int:
+    """Estime la taille totale (octets) du téléchargement à partir des formats
+    yt-dlp, pour pondérer la barre de progression. Retourne 0 si inconnu (le
+    hook retombe alors sur une répartition par tranches égales).
+
+    Heuristique alignée sur les sélecteurs de `_apply_format` : meilleure vidéo
+    (le plus gros format vidéo seule) + audio choisi(s) ; pour l'audio seul ou
+    le format manuel, uniquement la piste concernée.
+
+    `duration` : durée de la vidéo (s). Certains sites (france.tv) n'exposent
+    aucun `filesize` ; on retombe alors sur débit × durée (tbr en kbit/s) pour
+    une estimation suffisante à pondérer la barre.
+    """
+    if not formats:
+        return 0
+
+    def sz(f: dict | None) -> int:
+        if not f:
+            return 0
+        s = int(f.get("filesize") or f.get("filesize_approx") or 0)
+        if s:
+            return s
+        # Pas de taille annoncée : estimer via le débit moyen et la durée.
+        tbr = f.get("tbr") or f.get("vbr") or f.get("abr") or 0
+        if tbr and duration:
+            return int(float(tbr) * 1000 / 8 * duration)
+        return 0
+
+    by_id = {f.get("format_id"): f for f in formats}
+
+    if format_spec == "subtitles_only":
+        return 0
+    if format_id:
+        return sz(by_id.get(format_id))
+
+    video_only = [f for f in formats
+                  if f.get("vcodec") not in (None, "none") and f.get("acodec") in (None, "none")]
+    audio_only = [f for f in formats
+                  if f.get("vcodec") in (None, "none") and f.get("acodec") not in (None, "none")]
+    progressive = [f for f in formats
+                   if f.get("vcodec") not in (None, "none") and f.get("acodec") not in (None, "none")]
+
+    want_audio_only = format_spec in ("mp3", "m4a")
+    total = 0
+
+    # Audio
+    if audio_groups:
+        for group in audio_groups:
+            for fid in group:
+                s = sz(by_id.get(fid))
+                if s:
+                    total += s
+                    break
+    elif audio_only:
+        total += max((sz(f) for f in audio_only), default=0)
+
+    # Vidéo (sauf audio seul)
+    if not want_audio_only:
+        if video_only:
+            total += max((sz(f) for f in video_only), default=0)
+        elif not audio_groups and not audio_only and progressive:
+            total += max((sz(f) for f in progressive), default=0)
+
+    return total
+
+
+def _apply_format(opts: dict, format_spec: str, format_id: str | None = None,
+                  audio_groups: list[list[str]] | None = None) -> None:
+    """Applique le format yt-dlp et les post-processeurs selon le choix.
+
+    `audio_groups` : pistes audio choisies par l'utilisateur (sites
+    personnalisés), chaque piste étant une liste d'ids équivalents
+    (repli dash/hls). Plusieurs pistes => un seul fichier contenant tous les
+    flux audio (l'utilisateur change de piste dans son lecteur). On garde la
+    meilleure vidéo. Ignoré en mode manuel ou sous-titres seuls.
+    """
+    # Une piste -> « (id1/id2) » ; plusieurs pistes -> « (..)+(..) » (multi-flux).
+    ag = None
+    if audio_groups:
+        parts = ["(" + "/".join(ids) + ")" for ids in audio_groups if ids]
+        if parts:
+            ag = "+".join(parts)
+            if len(parts) > 1:
+                # Autoriser plusieurs flux audio dans un seul fichier.
+                opts["allow_multiple_audio_streams"] = True
+
     if format_id:
         # Format manuel spécifique
         opts["format"] = format_id
     elif format_spec == "mp3":
-        opts["format"] = "bestaudio/best"
+        opts["format"] = ag or "bestaudio/best"
         opts["postprocessors"] = [{
             "key": "FFmpegExtractAudio",
             "preferredcodec": "mp3",
             "preferredquality": "192",
         }]
     elif format_spec == "m4a":
-        opts["format"] = "bestaudio[ext=m4a]/bestaudio/best"
+        opts["format"] = ag or "bestaudio[ext=m4a]/bestaudio/best"
         opts["postprocessors"] = [{
             "key": "FFmpegExtractAudio",
             "preferredcodec": "m4a",
         }]
     elif format_spec == "mp4":
-        opts["format"] = "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best"
+        if ag:
+            # Qualité RÉELLE maximale : tri par résolution/fps/codec d'abord, puis,
+            # à qualité strictement égale, on préfère le protocole DASH (« proto:
+            # http_dash_segments »). Pourquoi : sur france.tv la marche HLS et la
+            # marche DASH sont le MÊME encode 1080p (HLS = +12 % d'overhead TS), et
+            # le HLS passe par ffmpeg en interne (aucune progression pendant la
+            # vidéo + pas d'annulation). Comme la résolution prime, si une marche
+            # HLS est réellement plus haute, elle gagne quand même (et le moniteur
+            # disque prend alors le relais pour la barre).
+            opts["format_sort"] = _CUSTOM_VIDEO_SORT
+            opts["format"] = f"bestvideo[ext=mp4]+{ag}/bestvideo+{ag}/best"
+            opts["merge_output_format"] = "mp4"
+        else:
+            opts["format"] = "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best"
         opts["postprocessors"] = [{
             "key": "FFmpegVideoConvertor",
             "preferedformat": "mp4",
@@ -637,6 +965,13 @@ def _apply_format(opts: dict, format_spec: str, format_id: str | None = None) ->
         # Pas de format vidéo/audio — seuls les sous-titres seront écrits.
         # skip_download est déjà mis à True par l'appelant.
         pass
+    elif ag:
+        # Auto avec piste(s) audio choisie(s) — conteneur mp4 pour la compat.
+        # Qualité réelle max (résolution d'abord) puis DASH à qualité égale :
+        # cf. le commentaire détaillé dans la branche « mp4 » ci-dessus.
+        opts["format_sort"] = _CUSTOM_VIDEO_SORT
+        opts["format"] = f"bestvideo+{ag}/best"
+        opts["merge_output_format"] = "mp4"
     else:
         # Auto : meilleure qualité disponible
         opts["format"] = "bestvideo+bestaudio/best"

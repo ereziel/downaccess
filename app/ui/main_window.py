@@ -48,11 +48,16 @@ from app.ui.announcement_dialog import AnnouncementDialog
 from app.ui.download_list import (
     DownloadList,
     STATUS_PENDING,
+    STATUS_PREPARING,
     STATUS_ACTIVE,
     STATUS_PAUSED,
+    STATUS_PROCESSING,
     STATUS_DONE,
+    STATUS_ALREADY,
 )
 from app.ui.format_dialog import FormatDialog
+from app.ui.audio_track_dialog import AudioTrackDialog
+from app.core.custom_sites import is_custom_site_url, detect_audio_tracks
 from app.ui.playlist_dialog import PlaylistDialog
 from app.ui.search_dialog import SearchDialog, SearchResultsDialog
 from app.ui.settings_dialog import SettingsDialog
@@ -294,26 +299,53 @@ class MainWindow(wx.Frame):
         self._announce_download(_("Téléchargement démarré : {title}.").format(title=title))
 
     def _on_dl_progress(self, prog: DownloadProgress) -> None:
+        # Capture du chemin (sur chaque partie terminée, pas seulement la fin)
+        if prog.filepath:
+            data = self._dl_data.get(prog.download_id)
+            if data is not None:
+                data["filepath"] = prog.filepath
+        # Phase de préparation (analyse, manifestes) avant le premier octet
+        if prog.status == "preparing":
+            self.download_list.set_status(prog.download_id, STATUS_PREPARING)
+            self.set_status(_("Préparation du téléchargement…"))
+            return
+        # Phase de post-traitement (fusion/conversion ffmpeg) : statut « Traitement »
+        if prog.status == "processing":
+            self.download_list.set_status(prog.download_id, STATUS_PROCESSING)
+            self.set_status(_("Traitement du fichier en cours…"))
+            return
+        # Fichier déjà présent : yt-dlp n'a rien retéléchargé. On le marque comme
+        # tel (statut « Déjà téléchargé ») au lieu d'un faux « Terminé ».
+        if prog.status == "already_downloaded":
+            data = self._dl_data.get(prog.download_id)
+            if data is not None:
+                data["already_downloaded"] = True
+            self.download_list.already_downloaded_item(prog.download_id, prog.size)
+            return
         self.download_list.update_progress(prog.download_id, prog.percent, prog.size)
         self._progress[prog.download_id] = prog.percent
         # La gauge suit le dernier download actif sauf si l'utilisateur
         # a sélectionné un autre item dans la liste
         if self._gauge_dl_id is None or self._gauge_dl_id == prog.download_id:
             self._update_gauge(prog.download_id, prog.percent)
-        # Capture du chemin final pour l'historique
-        if prog.status == "finished" and prog.filepath:
-            data = self._dl_data.get(prog.download_id)
-            if data is not None:
-                data["filepath"] = prog.filepath
 
     def _on_dl_complete(self, download_id: str) -> None:
-        self.download_list.complete_item(download_id)
+        dl_data = self._dl_data.get(download_id, {})
         self._progress.pop(download_id, None)
         if self._gauge_dl_id == download_id:
             self._reset_gauge()
-        self.set_status(_("Téléchargement terminé."))
-        self._announce_download(_("Téléchargement terminé."), interrupt=False)
-        dl_data = self._dl_data.get(download_id, {})
+        if dl_data.get("already_downloaded"):
+            # Le fichier était déjà dans le dossier : ne pas faire croire à un
+            # vrai téléchargement.
+            self.download_list.already_downloaded_item(download_id)
+            self.set_status(_("Ce fichier était déjà dans votre dossier de "
+                              "téléchargements."))
+            self._announce_download(
+                _("Ce fichier était déjà téléchargé."), interrupt=False)
+        else:
+            self.download_list.complete_item(download_id)
+            self.set_status(_("Téléchargement terminé."))
+            self._announce_download(_("Téléchargement terminé."), interrupt=False)
         self._log_history(dl_data, status="success")
         # Si c'était un retry avec cookies, proposer de mémoriser le site
         if dl_data.get("use_cookies"):
@@ -417,6 +449,7 @@ class MainWindow(wx.Frame):
             url,
             format_spec=data.get("format_spec", "auto"),
             format_id=data.get("format_id"),
+            audio_groups=data.get("audio_groups"),
             referer=data.get("referer"),
             cookies=data.get("cookies"),
             playlist_title=data.get("playlist_title"),
@@ -426,11 +459,15 @@ class MainWindow(wx.Frame):
         label = data.get("format_spec", "auto").upper()
         if label == "AUTO":
             label = _("Auto")
+        if data.get("track_label"):
+            label = f"{label} — {data['track_label']}"
         self.download_list.add_item(dl_id, url, site="—", fmt=label)
         self._dl_data[dl_id] = {
             "url": url,
             "format_spec": data.get("format_spec", "auto"),
             "format_id": data.get("format_id"),
+            "audio_groups": data.get("audio_groups"),
+            "track_label": data.get("track_label"),
             "referer": data.get("referer"),
             "cookies": data.get("cookies"),
             "site": data.get("site", ""),
@@ -1024,7 +1061,8 @@ class MainWindow(wx.Frame):
     def _all_done(self) -> bool:
         """Retourne True si aucun téléchargement n'est en cours ou en attente."""
         count = self.download_list.count()
-        done  = self.download_list.count_by_status(STATUS_DONE)
+        done  = (self.download_list.count_by_status(STATUS_DONE)
+                 + self.download_list.count_by_status(STATUS_ALREADY))
         return count > 0 and done >= count
 
     def _open_download_folder(self) -> None:
@@ -1427,6 +1465,11 @@ class MainWindow(wx.Frame):
 
         if fmt_choice == FORMAT_MANUAL and len(urls) == 1:
             self._enqueue_with_format_selection(urls[0], subtitles_override=subs)
+        elif (len(urls) == 1 and fmt_choice not in (FORMAT_MANUAL, "subtitles_only")
+              and is_custom_site_url(urls[0])):
+            # Site personnalisé (france.tv, arte) : proposer la piste audio
+            self._enqueue_with_audio_track_selection(urls[0], fmt_choice,
+                                                     subtitles_override=subs)
         else:
             for url in urls:
                 self._enqueue_url(url, fmt_choice, subtitles_override=subs)
@@ -1473,6 +1516,9 @@ class MainWindow(wx.Frame):
 
     def _enqueue_url(self, url: str, format_spec: str = "auto",
                      format_id: str | None = None,
+                     audio_groups: list[list[str]] | None = None,
+                     track_label: str | None = None,
+                     prefetched_info=None,
                      referer: str | None = None,
                      cookies: str | None = None,
                      playlist_title: str | None = None,
@@ -1495,6 +1541,8 @@ class MainWindow(wx.Frame):
             )
             return
         dl_id = self._queue.add(url, format_spec=format_spec, format_id=format_id,
+                                audio_groups=audio_groups,
+                                prefetched_info=prefetched_info,
                                 referer=referer, cookies=cookies,
                                 playlist_title=playlist_title,
                                 playlist_number=playlist_number,
@@ -1506,10 +1554,13 @@ class MainWindow(wx.Frame):
             label = _("Sous-titres")
         else:
             label = format_spec.upper()
+        if track_label:
+            label = f"{label} — {track_label}"
         self.download_list.add_item(dl_id, url, site="—", fmt=label)
         # Stocker pour retry et rapport d'erreur
         self._dl_data[dl_id] = {
             "url": url, "format_spec": format_spec, "format_id": format_id,
+            "audio_groups": audio_groups, "track_label": track_label,
             "referer": referer, "cookies": cookies, "site": "",
             "playlist_title": playlist_title, "playlist_number": playlist_number,
         }
@@ -1569,6 +1620,69 @@ class MainWindow(wx.Frame):
                                   subtitles_override=subs)
             else:
                 self.set_status(_("Sélection de format annulée."))
+
+    def _enqueue_with_audio_track_selection(self, url: str, format_spec: str,
+                                            subtitles_override: bool | None = None) -> None:
+        """Site personnalisé : fetch info → AudioTrackDialog → enqueue avec piste."""
+        self.set_status(_("Recherche des pistes audio disponibles…"))
+        speech.speak(_("Recherche des pistes audio disponibles."))
+
+        import threading
+        from app.core.downloader import Downloader, DownloadError
+
+        result = {"format_spec": format_spec, "subs": subtitles_override}
+
+        def fetch():
+            try:
+                dl = Downloader(self.settings)
+                info = dl.fetch_info("__tracks__", url)
+                result["info"] = info
+            except DownloadError as exc:
+                result["error"] = str(exc)
+            wx.CallAfter(self._on_audio_tracks_ready, url, result)
+
+        threading.Thread(target=fetch, daemon=True).start()
+
+    def _on_audio_tracks_ready(self, url: str, result: dict) -> None:
+        format_spec = result.get("format_spec", "auto")
+        subs = result.get("subs")
+
+        if "error" in result:
+            # Échec de l'extraction : laisser le worker réessayer normalement.
+            self.set_status(_("Pistes audio non disponibles, téléchargement standard."))
+            self._enqueue_url(url, format_spec, subtitles_override=subs)
+            return
+
+        info = result.get("info")
+        # Playlist ou info absente → flux normal (périmètre : vidéo unique)
+        if not info or getattr(info, "is_playlist", False):
+            self._enqueue_url(url, format_spec, subtitles_override=subs)
+            return
+
+        formats = info.raw_formats if hasattr(info, "raw_formats") else []
+        tracks = detect_audio_tracks(formats)
+        if len(tracks) < 2:
+            # Une seule piste (ou aucune détectée) : rien à demander.
+            self._enqueue_url(url, format_spec, subtitles_override=subs)
+            return
+
+        # Mode audio (mp3/m4a) : un fichier audio ne porte qu'une piste → choix
+        # unique. Mode vidéo : multi-pistes (commutables dans le lecteur).
+        single = format_spec in ("mp3", "m4a")
+        with AudioTrackDialog(self, info.title, tracks, single_select=single) as dlg:
+            if dlg.ShowModal() == wx.ID_OK:
+                chosen = dlg.get_selected_tracks()
+                # Toutes les pistes cochées vont dans UN seul fichier (multi-flux).
+                self._enqueue_url(
+                    url, format_spec,
+                    audio_groups=[t.format_ids for t in chosen],
+                    track_label=" + ".join(t.label for t in chosen),
+                    prefetched_info=info,
+                    subtitles_override=subs,
+                )
+            else:
+                self.set_status(_("Choix de piste audio annulé."))
+                wx.CallAfter(self.download_list.SetFocus)
 
     def _on_open_folder(self, _event) -> None:
         self._open_download_folder()
@@ -1687,6 +1801,8 @@ class MainWindow(wx.Frame):
             data["url"],
             data.get("format_spec", "auto"),
             format_id=data.get("format_id"),
+            audio_groups=data.get("audio_groups"),
+            track_label=data.get("track_label"),
             referer=data.get("referer"),
             cookies=data.get("cookies"),
             playlist_title=data.get("playlist_title"),
@@ -1793,7 +1909,11 @@ class MainWindow(wx.Frame):
             if _is_bare_domain(url):
                 self.set_status(_("URL ignorée (domaine seul) : {url}").format(url=url))
                 continue
-            self._enqueue_url(url)
+            if is_custom_site_url(url):
+                # Site personnalisé : proposer le choix de piste audio
+                self._enqueue_with_audio_track_selection(url, "auto")
+            else:
+                self._enqueue_url(url)
         n = len(urls)
         if n > 1:
             msg = _("{count} URLs ajoutées depuis le presse-papiers.").format(count=n)
@@ -1830,7 +1950,10 @@ class MainWindow(wx.Frame):
             self._clip_seen.add(url)
             if _is_bare_domain(url):
                 continue
-            self._enqueue_url(url)
+            if is_custom_site_url(url):
+                self._enqueue_with_audio_track_selection(url, "auto")
+            else:
+                self._enqueue_url(url)
             msg = _("URL détectée et ajoutée : {url}").format(url=url)
             self.set_status(msg)
             speech.speak(msg)

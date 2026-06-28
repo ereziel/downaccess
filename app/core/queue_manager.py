@@ -6,6 +6,7 @@ from collections.abc import Callable
 
 from app.core.downloader import (
     Downloader, DownloadError, DownloadInfo, DownloadProgress, LoginRequiredError,
+    estimate_total_bytes,
 )
 
 _log = logging.getLogger("downaccess.queue")
@@ -17,6 +18,8 @@ class QueueItem:
     url: str
     format_spec: str = "auto"        # auto | mp4 | mp3 | m4a | manual
     format_id: str | None = None     # format_id yt-dlp (mode manuel)
+    audio_groups: list[list[str]] | None = None  # pistes audio choisies (sites personnalisés)
+    prefetched_info: DownloadInfo | None = None  # infos déjà extraites (évite une 2e analyse)
     referer: str | None = None       # Referer HTTP (UGE)
     cookies: str | None = None       # Cookies de session (UGE, document.cookie)
     playlist_title: str | None = None   # Titre de la playlist parente (organisation dossier)
@@ -84,6 +87,8 @@ class QueueManager:
             return len(self._active)
 
     def add(self, url: str, format_spec: str = "auto", format_id: str | None = None,
+            audio_groups: list[list[str]] | None = None,
+            prefetched_info: DownloadInfo | None = None,
             referer: str | None = None, cookies: str | None = None,
             playlist_title: str | None = None,
             playlist_number: int | None = None,
@@ -97,6 +102,8 @@ class QueueManager:
             url=url,
             format_spec=format_spec,
             format_id=format_id,
+            audio_groups=audio_groups,
+            prefetched_info=prefetched_info,
             referer=referer,
             cookies=cookies,
             playlist_title=playlist_title,
@@ -201,6 +208,11 @@ class QueueManager:
         dl_id = item.download_id
         _log.info("Démarrage worker id=%s url=%s", dl_id, item.url)
 
+        # Signaler « Préparation » : entre le démarrage du worker et le premier
+        # octet, l'analyse (fetch_info, manifestes signés type france.tv) peut
+        # durer ; sans ça l'item resterait « En attente » comme s'il était bloqué.
+        self._post(self._on_progress, DownloadProgress(download_id=dl_id, status="preparing"))
+
         # 1. Extraction des infos (skip si URL interceptée avec token)
         if item.skip_info:
             _log.info("Skip fetch_info (URL interceptée) id=%s", dl_id)
@@ -210,6 +222,17 @@ class QueueManager:
                 title=item.url.split("/")[-1].split("?")[0],
                 site="generic",
             )
+            self._post(self._on_info, info)
+        elif item.prefetched_info is not None:
+            # Infos déjà extraites (ex. dialogue de pistes audio) : on réutilise
+            # pour éviter une 2e analyse (france.tv : manifeste lent).
+            _log.info("Réutilisation des infos préextraites id=%s", dl_id)
+            info = item.prefetched_info
+            info.download_id = dl_id
+            if info.is_playlist:
+                self._post(self._on_playlist or self._on_info, info)
+                self._finish(dl_id)
+                return
             self._post(self._on_info, info)
         else:
             try:
@@ -241,12 +264,23 @@ class QueueManager:
         def on_progress(prog: DownloadProgress) -> None:
             self._post(self._on_progress, prog)
 
+        # Estimation de la taille totale -> barre de progression pondérée
+        expected_bytes = 0
+        raw_formats = getattr(info, "raw_formats", None)
+        if raw_formats:
+            expected_bytes = estimate_total_bytes(
+                raw_formats, item.format_spec, item.format_id, item.audio_groups,
+                duration=getattr(info, "duration", 0.0))
+
         try:
             warning = dl.download(
                 dl_id, item.url, on_progress, item.stop_event,
                 pause_event=item.pause_event,
                 format_spec=item.format_spec,
                 format_id=item.format_id,
+                audio_groups=item.audio_groups,
+                expected_bytes=expected_bytes,
+                title=getattr(info, "title", "") or "",
                 referer=item.referer,
                 cookies=item.cookies,
                 playlist_title=item.playlist_title,

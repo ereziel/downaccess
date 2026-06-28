@@ -1,23 +1,32 @@
 import wx
 
 # Codes de statut internes (jamais traduits — utilises pour comparaison).
-STATUS_PENDING = "pending"
-STATUS_ACTIVE  = "active"
-STATUS_PAUSED  = "paused"
-STATUS_DONE    = "done"
-STATUS_ERROR   = "error"
+STATUS_PENDING    = "pending"
+STATUS_PREPARING  = "preparing"
+STATUS_ACTIVE     = "active"
+STATUS_PAUSED     = "paused"
+STATUS_PROCESSING = "processing"
+STATUS_DONE       = "done"
+STATUS_ALREADY    = "already"
+STATUS_ERROR      = "error"
 
 
 def _status_label(code: str) -> str:
     """Convertit un code de statut interne en libelle localise pour l'affichage."""
     if code == STATUS_PENDING:
         return _("En attente")
+    if code == STATUS_PREPARING:
+        return _("Préparation")
     if code == STATUS_ACTIVE:
         return _("En cours")
     if code == STATUS_PAUSED:
         return _("En pause")
+    if code == STATUS_PROCESSING:
+        return _("Traitement")
     if code == STATUS_DONE:
         return _("Terminé")
+    if code == STATUS_ALREADY:
+        return _("Déjà téléchargé")
     if code == STATUS_ERROR:
         return _("Erreur")
     return code
@@ -125,6 +134,18 @@ class DownloadList(wx.ListCtrl):
             return
         self.SetItem(idx, COL_STATE, _status_label(STATUS_DONE))
         self._status_codes[download_id] = STATUS_DONE
+        self.SetItem(idx, COL_PCT, "100 %")
+        if size:
+            self.SetItem(idx, COL_SIZE, size)
+
+    def already_downloaded_item(self, download_id: str, size: str = "") -> None:
+        """Marque un item comme « Déjà téléchargé » (fichier déjà présent,
+        yt-dlp n'a rien retéléchargé)."""
+        idx = self._items.get(download_id)
+        if idx is None:
+            return
+        self.SetItem(idx, COL_STATE, _status_label(STATUS_ALREADY))
+        self._status_codes[download_id] = STATUS_ALREADY
         self.SetItem(idx, COL_PCT, "100 %")
         if size:
             self.SetItem(idx, COL_SIZE, size)
