@@ -542,7 +542,7 @@ class Downloader:
         # via la taille des .part, et tue ffmpeg sur annulation.
         monitor_stop = threading.Event()
         monitor = self._make_disk_monitor(
-            download_id, on_progress, temp_dir, title, expected_bytes,
+            download_id, on_progress, temp_dir, expected_bytes,
             hook_state, stop_event, monitor_stop)
         monitor.start()
 
@@ -774,7 +774,6 @@ class Downloader:
         download_id: str,
         on_progress: OnProgressCallback,
         temp_dir: str,
-        title: str,
         expected_bytes: int,
         hook_state: dict,
         stop_event: threading.Event,
@@ -791,8 +790,6 @@ class Downloader:
         2. Annulation : `stop_event` n'interrompt pas ffmpeg (le hook ne tourne
            pas) ; on tue alors les processus ffmpeg enfants.
         """
-        prefix = _sanitize_dirname(title)[:20] if title else ""
-
         def _kill_ffmpeg_children() -> None:
             try:
                 import psutil
@@ -806,27 +803,19 @@ class Downloader:
             except Exception:
                 pass
 
-        def _part_bytes() -> int:
-            if not prefix:
-                return 0
-            import glob
+        def _disk_bytes() -> int:
+            # temp_dir est dedie a CE telechargement (paths['temp']) : on somme
+            # TOUS ses fichiers, pas seulement les .part. Crucial en multi-flux
+            # (video + plusieurs pistes audio) : quand un flux se termine, son
+            # fichier perd le suffixe .part ; en sommant tout le dossier, le total
+            # continue de monter pendant les flux suivants au lieu de figer la
+            # barre au pic du premier flux. (Le dossier etant litteral, glob n'a
+            # pas le souci des composants commencant par un point.)
             total = 0
-            # Les .part vivent dans temp_dir (paths['temp']). On part de ce dossier
-            # LITTERAL : sinon glob('dest/**') ignore .da-tmp (glob saute les
-            # composants commencant par un point), et la progression reste figee
-            # sur « Preparation » pour les flux HLS sans hook (france.tv/arte).
-            patterns = [
-                os.path.join(temp_dir, prefix + "*.part"),
-                os.path.join(temp_dir, "**", prefix + "*.part"),
-            ]
-            seen: set[str] = set()
-            for pattern in patterns:
-                for path in glob.glob(pattern, recursive=True):
-                    if path in seen:
-                        continue
-                    seen.add(path)
+            for root, _dirs, files in os.walk(temp_dir):
+                for name in files:
                     try:
-                        total += os.path.getsize(path)
+                        total += os.path.getsize(os.path.join(root, name))
                     except OSError:
                         pass
             return total
@@ -845,11 +834,13 @@ class Downloader:
                     continue
                 if time.monotonic() - hook_state.get("last_hook_ts", 0.0) < 2.0:
                     continue
-                done = hook_state.get("done_bytes", 0)
-                cur = _part_bytes()
+                # cur = octets deja sur le disque pour ce telechargement (flux
+                # termines + en cours). On ne rajoute PAS done_bytes : ce serait
+                # compter deux fois les flux finis (leur fichier est encore la).
+                cur = _disk_bytes()
                 if cur <= 0:
                     continue
-                pct = min(99.0, (done + cur) / expected_bytes * 100.0)
+                pct = min(99.0, cur / expected_bytes * 100.0)
                 # Jamais en arrière (cf. _monotonic côté hook).
                 pct = max(pct, hook_state.get("max_pct", 0.0))
                 hook_state["max_pct"] = pct
