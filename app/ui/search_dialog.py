@@ -248,6 +248,10 @@ class SearchResultsDialog(wx.Dialog):
     def _populate(self) -> None:
         for entry in self._results:
             title    = entry.get("title") or entry.get("id") or "?"
+            if entry.get("_has_ad"):
+                # Signale aux utilisateurs deficients visuels que l'audiodescription
+                # existe (lu par NVDA dans le titre).
+                title = _("{title} — Audiodescription").format(title=title)
             duration = _fmt_duration(entry.get("duration"))
             uploader = entry.get("uploader") or entry.get("channel") or "—"
             entry_type = entry.get("_dl_type") or "video"

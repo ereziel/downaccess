@@ -17,6 +17,8 @@ DEFAULTS: dict = {
     "subtitle_langs": ["fr", "en"],
     "subtitle_format": "srt",       # srt | vtt | original
     "subtitle_mode": "separate",    # separate | embed | burn
+    "audio_description_mode": "ask",    # sur france.tv/arte, que faire des pistes :
+                                        # ask | ad_only | original_and_ad | original_only
     "organize_by_site": False,
     "organize_by_playlist": False,
     "playlist_numbering": 0,       # 0=original, 1=séquentiel, 2=aucun

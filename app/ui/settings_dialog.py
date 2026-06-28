@@ -13,6 +13,7 @@ SUBTITLE_FORMAT_CHOICES = ["srt", "vtt", "original"]
 SUBTITLE_MODE_CHOICES = ["separate", "embed", "burn"]
 LANGUAGE_CHOICES = ["auto", "fr", "en"]
 ANNOUNCE_CHOICES = ["always", "foreground", "never"]
+AD_MODE_CHOICES = ["ask", "ad_only", "original_and_ad", "original_only"]
 
 # Limiteur de vitesse : valeurs en octets/sec. 0 = illimité.
 RATELIMIT_VALUES = [
@@ -68,6 +69,15 @@ def _announce_labels():
         _("Toujours"),
         _("Seulement quand DownAccess est au premier plan"),
         _("Jamais"),
+    ]
+
+
+def _ad_mode_labels():
+    return [
+        _("Demander à chaque fois"),
+        _("Audiodescription seule"),
+        _("Version originale + audiodescription"),
+        _("Version originale seule"),
     ]
 
 
@@ -270,6 +280,20 @@ class SettingsDialog(wx.Dialog):
 
         sizer.Add(self.choice_post, 0, wx.EXPAND | wx.ALL, 12)
 
+        lbl_ad = wx.StaticText(
+            page,
+            label=_("Audiodescription (france.tv, Arte) :"))
+        self.choice_ad = wx.Choice(
+            page,
+            choices=_ad_mode_labels(),
+            name=_("Mode audiodescription"),
+        )
+        self.choice_ad.SetToolTip(
+            _("Sur les sites compatibles, choisit automatiquement la ou les "
+              "pistes audio sans afficher de dialogue."))
+        sizer.Add(lbl_ad, 0, wx.LEFT | wx.RIGHT | wx.TOP, 12)
+        sizer.Add(self.choice_ad, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 12)
+
         page.SetSizer(sizer)
         return page
 
@@ -436,6 +460,9 @@ class SettingsDialog(wx.Dialog):
         post = s.get("post_processing", "none")
         idx = POST_CHOICES.index(post) if post in POST_CHOICES else 0
         self.choice_post.SetSelection(idx)
+        ad_mode = s.get("audio_description_mode", "ask")
+        ad_idx = AD_MODE_CHOICES.index(ad_mode) if ad_mode in AD_MODE_CHOICES else 0
+        self.choice_ad.SetSelection(ad_idx)
 
         # Sous-titres
         self.chk_auto_subs.SetValue(s.get("auto_subtitles", False))
@@ -483,6 +510,7 @@ class SettingsDialog(wx.Dialog):
 
         # Formats
         s["post_processing"] = POST_CHOICES[self.choice_post.GetSelection()]
+        s["audio_description_mode"] = AD_MODE_CHOICES[self.choice_ad.GetSelection()]
 
         # Sous-titres
         s["auto_subtitles"]  = self.chk_auto_subs.GetValue()

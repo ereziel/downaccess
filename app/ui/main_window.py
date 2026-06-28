@@ -1688,6 +1688,57 @@ class MainWindow(wx.Frame):
             self._enqueue_url(url, format_spec, subtitles_override=subs)
             return
 
+        # Sélection automatique selon la préférence Audiodescription : on évite
+        # le dialogue quand le mode peut être satisfait. Repli sur le dialogue si
+        # la ou les pistes voulues n'existent pas (ex. mode AD mais aucune AD).
+        ad_mode = self.settings.get("audio_description_mode", "ask")
+        if ad_mode != "ask":
+            from app.core import i18n
+            ui_lang = i18n.get_current_language_code()
+
+            def _pick(lst):
+                # Privilégie la langue de l'interface, sinon la première piste.
+                lst = sorted(lst, key=lambda t: 0 if t.key.endswith(f"-{ui_lang}") else 1)
+                return lst[0] if lst else None
+
+            ad_tracks = [t for t in tracks if t.is_audio_description]
+            std_tracks = [t for t in tracks if not t.is_audio_description]
+            audio_only = format_spec in ("mp3", "m4a")
+
+            groups: list[list[str]] | None = None
+            label = None
+            if ad_mode == "ad_only" and ad_tracks:
+                t = _pick(ad_tracks)
+                groups, label = [t.format_ids], t.label
+            elif ad_mode == "original_only" and std_tracks:
+                t = _pick(std_tracks)
+                groups, label = [t.format_ids], t.label
+            elif ad_mode == "original_and_ad" and ad_tracks:
+                ad = _pick(ad_tracks)
+                if audio_only or not std_tracks:
+                    # Un fichier audio ne porte qu'une piste → AD seule.
+                    groups, label = [ad.format_ids], ad.label
+                else:
+                    orig = _pick(std_tracks)
+                    groups = [orig.format_ids, ad.format_ids]
+                    label = f"{orig.label} + {ad.label}"
+
+            if groups:
+                self.set_status(
+                    _("Piste audio sélectionnée automatiquement : {label}").format(label=label))
+                speech.speak(
+                    _("Piste audio sélectionnée automatiquement : {label}").format(label=label),
+                    interrupt=False)
+                self._enqueue_url(
+                    url, format_spec,
+                    audio_groups=groups,
+                    track_label=label,
+                    prefetched_info=info,
+                    subtitles_override=subs,
+                )
+                return
+            # Mode auto non satisfait (piste absente) → on retombe sur le dialogue.
+
         # Mode audio (mp3/m4a) : un fichier audio ne porte qu'une piste → choix
         # unique. Mode vidéo : multi-pistes (commutables dans le lecteur).
         single = format_spec in ("mp3", "m4a")

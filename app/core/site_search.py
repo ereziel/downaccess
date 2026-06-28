@@ -100,6 +100,7 @@ def _search_francetv(query: str, limit: int) -> list[dict]:
                 "uploader": program.get("label") or item.get("offer") or "france.tv",
                 "webpage_url": url,
                 "_dl_type": "video",
+                "_has_ad": bool(item.get("is_audio_descripted")),
             })
             if len(entries) >= limit:
                 return entries
