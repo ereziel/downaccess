@@ -7,8 +7,9 @@ from app.core import speech
 from app.core import i18n
 from app.core.ffmpeg_utils import get_ffmpeg_path
 
-# Cles internes (jamais traduites)
-POST_CHOICES = ["none", "mp4", "mp3", "m4a"]
+# Cles internes (jamais traduites). Memes codes que add_url_dialog (format par
+# defaut) ; « manual » et « subtitles_only » ne sont pas des defauts utiles.
+POST_CHOICES = ["auto", "mp4", "mp3", "m4a", "amc_video", "amc_audio"]
 SUBTITLE_FORMAT_CHOICES = ["srt", "vtt", "original"]
 SUBTITLE_MODE_CHOICES = ["separate", "embed", "burn"]
 LANGUAGE_CHOICES = ["auto", "fr", "en"]
@@ -29,10 +30,12 @@ RATELIMIT_VALUES = [
 
 def _post_labels():
     return [
-        _("Aucun (fichier d'origine)"),
+        _("Meilleure qualité automatique (fichier d'origine)"),
         _("Vidéo MP4 (H.264)"),
         _("Audio MP3"),
         _("Audio M4A"),
+        _("Ouvrir avec Access Media Converter — vidéo"),
+        _("Ouvrir avec Access Media Converter — audio seul"),
     ]
 
 
@@ -414,6 +417,17 @@ class SettingsDialog(wx.Dialog):
         row_ffmpeg.Add(self.btn_ffmpeg_browse, 0, wx.RIGHT, 4)
         row_ffmpeg.Add(self.btn_ffmpeg_test,   0)
 
+        # Emplacement d'Access Media Converter
+        lbl_amc = wx.StaticText(page,
+            label=_("Emplacement d'Access Media Converter (vide = détection "
+                    "automatique) :"))
+        row_amc = wx.BoxSizer(wx.HORIZONTAL)
+        self.txt_amc = wx.TextCtrl(page, name=_("Emplacement d'Access Media Converter"))
+        self.btn_amc_browse = wx.Button(page, label=_("Parcourir…"),
+                                        name=_("Parcourir Access Media Converter"))
+        row_amc.Add(self.txt_amc,       1, wx.EXPAND | wx.RIGHT, 6)
+        row_amc.Add(self.btn_amc_browse, 0)
+
         # Options yt-dlp supplémentaires
         lbl_ytdlp_opts = wx.StaticText(page,
             label=_("Options yt-dlp supplémentaires (raw, une par ligne) :"))
@@ -426,6 +440,8 @@ class SettingsDialog(wx.Dialog):
 
         sizer.Add(lbl_ffmpeg,         0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 12)
         sizer.Add(row_ffmpeg,         0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 6)
+        sizer.Add(lbl_amc,            0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 12)
+        sizer.Add(row_amc,            0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 6)
         sizer.Add(lbl_ytdlp_opts,     0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 12)
         sizer.Add(self.txt_ytdlp_opts, 1, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, 6)
 
@@ -457,7 +473,7 @@ class SettingsDialog(wx.Dialog):
         self.radio_announce.SetSelection(ann_idx)
 
         # Formats
-        post = s.get("post_processing", "none")
+        post = s.get("post_processing", "auto")
         idx = POST_CHOICES.index(post) if post in POST_CHOICES else 0
         self.choice_post.SetSelection(idx)
         ad_mode = s.get("audio_description_mode", "ask")
@@ -490,6 +506,7 @@ class SettingsDialog(wx.Dialog):
 
         # Avancé
         self.txt_ffmpeg.SetValue(s.get("ffmpeg_path", "ffmpeg"))
+        self.txt_amc.SetValue(s.get("amc_path", ""))
         self.txt_ytdlp_opts.SetValue("\n".join(s.get("ytdlp_extra_opts", [])))
 
     def _collect_values(self) -> dict:
@@ -531,6 +548,7 @@ class SettingsDialog(wx.Dialog):
 
         # Avancé
         s["ffmpeg_path"] = self.txt_ffmpeg.GetValue().strip() or "ffmpeg"
+        s["amc_path"] = self.txt_amc.GetValue().strip()
         opts_raw = self.txt_ytdlp_opts.GetValue()
         s["ytdlp_extra_opts"] = [opt.strip() for opt in opts_raw.splitlines() if opt.strip()]
 
@@ -545,6 +563,7 @@ class SettingsDialog(wx.Dialog):
         self.btn_browse.Bind(wx.EVT_BUTTON, self._on_browse_folder)
         self.btn_ffmpeg_browse.Bind(wx.EVT_BUTTON, self._on_browse_ffmpeg)
         self.btn_ffmpeg_test.Bind(wx.EVT_BUTTON,   self._on_test_ffmpeg)
+        self.btn_amc_browse.Bind(wx.EVT_BUTTON,    self._on_browse_amc)
         self.btn_reset_warnings.Bind(wx.EVT_BUTTON, self._on_reset_warnings)
 
     def _on_reset_warnings(self, _event) -> None:
@@ -627,6 +646,16 @@ class SettingsDialog(wx.Dialog):
         ) as dlg:
             if dlg.ShowModal() == wx.ID_OK:
                 self.txt_ffmpeg.SetValue(dlg.GetPath())
+
+    def _on_browse_amc(self, _event) -> None:
+        with wx.FileDialog(
+            self,
+            _("Emplacement d'Access Media Converter"),
+            wildcard=_("Exécutable (*.exe)|*.exe|Tous les fichiers|*"),
+            style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST,
+        ) as dlg:
+            if dlg.ShowModal() == wx.ID_OK:
+                self.txt_amc.SetValue(dlg.GetPath())
 
     def _on_test_ffmpeg(self, _event) -> None:
         path = get_ffmpeg_path({"ffmpeg_path": self.txt_ffmpeg.GetValue().strip()})

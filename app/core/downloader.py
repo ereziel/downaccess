@@ -437,7 +437,7 @@ class Downloader:
         #   - audio seul (mp3/m4a) sans pistes choisies : 1
         #   - pistes audio choisies : N (audio seul) ou N+1 (avec vidéo)
         #   - vidéo standard : 2 (vidéo + audio à fusionner)
-        audio_only = format_spec in ("mp3", "m4a")
+        audio_only = format_spec in ("mp3", "m4a", "amc_audio")
         if format_id or format_spec == "subtitles_only":
             total_parts = 1
         elif audio_groups:
@@ -937,7 +937,7 @@ def estimate_total_bytes(formats: list[dict], format_spec: str = "auto",
     progressive = [f for f in formats
                    if f.get("vcodec") not in (None, "none") and f.get("acodec") not in (None, "none")]
 
-    want_audio_only = format_spec in ("mp3", "m4a")
+    want_audio_only = format_spec in ("mp3", "m4a", "amc_audio")
     total = 0
 
     # Audio
@@ -1016,6 +1016,19 @@ def _apply_format(opts: dict, format_spec: str, format_id: str | None = None,
             "key": "FFmpegVideoConvertor",
             "preferedformat": "mp4",
         }]
+    elif format_spec == "amc_audio":
+        # Audio original (codec natif), SANS réencodage : Access Media Converter
+        # convertira depuis la source pour éviter une double perte de qualité.
+        opts["format"] = ag or "bestaudio/best"
+    elif format_spec == "amc_video":
+        # Meilleur original (vidéo+audio), SANS réencodage : seule la fusion des
+        # flux a lieu (sans perte). AMC fera la conversion ensuite.
+        if ag:
+            opts["format_sort"] = _CUSTOM_VIDEO_SORT
+            opts["format"] = f"bestvideo+{ag}/best"
+            opts["merge_output_format"] = "mp4"
+        else:
+            opts["format"] = "bestvideo+bestaudio/best"
     elif format_spec == "subtitles_only":
         # Pas de format vidéo/audio — seuls les sous-titres seront écrits.
         # skip_download est déjà mis à True par l'appelant.

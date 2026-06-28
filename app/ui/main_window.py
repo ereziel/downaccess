@@ -5,6 +5,7 @@ import subprocess
 import sys
 import time
 import uuid
+import webbrowser
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -41,6 +42,7 @@ from app.core import i18n
 from app.core import updater
 from app.core import app_updater
 from app.core import announce
+from app.core import amc_integration
 from app.core.downloader import DownloadInfo, DownloadProgress
 from app.core.queue_manager import QueueManager
 from app.ui.add_url_dialog import AddUrlDialog, FORMAT_MANUAL
@@ -346,6 +348,8 @@ class MainWindow(wx.Frame):
             self.download_list.complete_item(download_id)
             self.set_status(_("Téléchargement terminé."))
             self._announce_download(_("Téléchargement terminé."), interrupt=False)
+        # Format « Ouvrir avec Access Media Converter » : passer le fichier à AMC.
+        self._maybe_handoff_to_amc(dl_data)
         self._log_history(dl_data, status="success")
         # Si c'était un retry avec cookies, proposer de mémoriser le site
         if dl_data.get("use_cookies"):
@@ -353,6 +357,69 @@ class MainWindow(wx.Frame):
         # Ouvrir le dossier si tous les téléchargements sont terminés
         if self.settings.get("open_folder_when_done") and self._all_done():
             self._open_download_folder()
+
+    # ------------------------------------------------------------------
+    # Menu contextuel de la file (clic droit / touche Menu)
+    # ------------------------------------------------------------------
+
+    def _on_list_context_menu(self, _event) -> None:
+        """Affiche le menu contextuel sur l'item sélectionné de la file."""
+        dl_id = self.download_list.get_selected_id()
+        if dl_id is None:
+            return
+        status = self.download_list.get_selected_status()
+        filepath = self._dl_data.get(dl_id, {}).get("filepath", "")
+        ready = (status in (STATUS_DONE, STATUS_ALREADY)
+                 and bool(filepath) and os.path.exists(filepath))
+
+        menu = wx.Menu()
+        item_amc = menu.Append(wx.ID_ANY,
+                               _("Ouvrir dans Access Media Converter"))
+        item_amc.Enable(ready)
+        menu.Bind(wx.EVT_MENU,
+                  lambda _e: self._on_open_in_amc(filepath), item_amc)
+        self.download_list.PopupMenu(menu)
+        menu.Destroy()
+        wx.CallAfter(self.download_list.SetFocus)
+
+    def _on_open_in_amc(self, filepath: str) -> None:
+        """Ouvre le fichier dans Access Media Converter, ou guide l'installation."""
+        if amc_integration.open_in_amc(filepath, self.settings):
+            self.set_status(_("Ouverture dans Access Media Converter…"))
+        else:
+            self._prompt_amc_not_installed()
+        wx.CallAfter(self.download_list.SetFocus)
+
+    def _maybe_handoff_to_amc(self, dl_data: dict) -> None:
+        """Si le téléchargement a été fait en mode « Ouvrir avec AMC », passe le
+        fichier (original, non réencodé) à Access Media Converter pour conversion."""
+        if dl_data.get("format_spec") not in ("amc_video", "amc_audio"):
+            return
+        filepath = dl_data.get("filepath", "")
+        if not filepath:
+            return
+        if amc_integration.open_in_amc(filepath, self.settings):
+            self.set_status(_("Ouverture dans Access Media Converter…"))
+        elif not getattr(self, "_amc_prompt_shown", False):
+            # AMC absent : on ne prévient qu'une fois par session (évite N modales
+            # si plusieurs fichiers AMC se terminent à la suite).
+            self._amc_prompt_shown = True
+            self._prompt_amc_not_installed()
+
+    def _prompt_amc_not_installed(self) -> None:
+        """AMC introuvable : propose d'ouvrir sa page de téléchargement."""
+        dlg = wx.MessageDialog(
+            self,
+            _("Access Media Converter n'a pas été trouvé sur cet ordinateur.\n\n"
+              "C'est une application gratuite et accessible qui convertit vos "
+              "fichiers audio et vidéo dans d'autres formats.\n\n"
+              "Voulez-vous ouvrir sa page de téléchargement ?"),
+            _("Access Media Converter introuvable"),
+            wx.YES_NO | wx.ICON_INFORMATION,
+        )
+        if dlg.ShowModal() == wx.ID_YES:
+            webbrowser.open(amc_integration.AMC_RELEASES_URL)
+        dlg.Destroy()
 
     def _on_diagnostic_recovered(self, download_id: str, filepath: str) -> None:
         """La relance de diagnostic (lancée pour le rapport d'erreur) a finalement
@@ -1237,6 +1304,8 @@ class MainWindow(wx.Frame):
         self.download_list = DownloadList(panel)
         sizer.Add(self.download_list, 1, wx.EXPAND | wx.ALL, 4)
         self.download_list.Hide()  # caché tant que la liste est vide
+        # Menu contextuel (clic droit + touche Menu → accessible NVDA).
+        self.download_list.Bind(wx.EVT_CONTEXT_MENU, self._on_list_context_menu)
 
         # Barre de progression native
         prog_sizer = wx.BoxSizer(wx.HORIZONTAL)
@@ -1971,6 +2040,13 @@ class MainWindow(wx.Frame):
             return  # ne pas Skip : le TextCtrl ne traite pas la touche
         event.Skip()
 
+    def _default_format(self) -> str:
+        """Format à appliquer aux ajouts qui NE passent pas par le dialogue
+        (Ctrl+V, surveillance du presse-papiers) : le « Format par défaut » des
+        Préférences. Replie l'ancien code « none » sur « auto »."""
+        fmt = self.settings.get("post_processing", "auto")
+        return "auto" if fmt == "none" else fmt
+
     def _on_paste_url(self, _event) -> None:
         """Ctrl+V global : colle l'URL du presse-papiers sans ouvrir de dialogue."""
         urls = _urls_from_clipboard()
@@ -1978,15 +2054,16 @@ class MainWindow(wx.Frame):
             self.set_status(_("Aucune URL valide dans le presse-papiers."))
             speech.speak(_("Aucune URL dans le presse-papiers."))
             return
+        default_fmt = self._default_format()
         for url in urls:
             if _is_bare_domain(url):
                 self.set_status(_("URL ignorée (domaine seul) : {url}").format(url=url))
                 continue
             if is_custom_site_url(url):
                 # Site personnalisé : proposer le choix de piste audio
-                self._enqueue_with_audio_track_selection(url, "auto")
+                self._enqueue_with_audio_track_selection(url, default_fmt)
             else:
-                self._enqueue_url(url)
+                self._enqueue_url(url, default_fmt)
         n = len(urls)
         if n > 1:
             msg = _("{count} URLs ajoutées depuis le presse-papiers.").format(count=n)
@@ -2019,14 +2096,15 @@ class MainWindow(wx.Frame):
         self._clip_last = text
         urls = _URL_RE.findall(text)
         new_urls = [u for u in urls if u not in self._clip_seen]
+        default_fmt = self._default_format()
         for url in new_urls:
             self._clip_seen.add(url)
             if _is_bare_domain(url):
                 continue
             if is_custom_site_url(url):
-                self._enqueue_with_audio_track_selection(url, "auto")
+                self._enqueue_with_audio_track_selection(url, default_fmt)
             else:
-                self._enqueue_url(url)
+                self._enqueue_url(url, default_fmt)
             msg = _("URL détectée et ajoutée : {url}").format(url=url)
             self.set_status(msg)
             speech.speak(msg)

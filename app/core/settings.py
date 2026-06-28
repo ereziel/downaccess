@@ -6,8 +6,10 @@ DEFAULTS: dict = {
     "download_folder": str(Path.home() / "Downloads"),
     "max_concurrent_downloads": 2,
     "concurrent_fragments": 1,      # 1=désactivé, >1=fragments en parallèle (-N)
-    "post_processing": "none",      # none | mp4 | mp3 | m4a
+    "post_processing": "auto",      # format par défaut (codes de add_url_dialog) :
+                                    # auto | mp4 | mp3 | m4a | amc_video | amc_audio
     "open_folder_when_done": False,
+    "amc_path": "",                  # emplacement de l'exe AMC (vide = détection auto)
     "ffmpeg_path": "ffmpeg",
     "proxy_http": "",
     "proxy_socks": "",
@@ -57,6 +59,10 @@ def load() -> dict:
         cfg.update({k: v for k, v in saved.items() if k in DEFAULTS})
     except FileNotFoundError:
         pass
+    # Migration : l'ancien code de format par défaut « none » correspond
+    # désormais à « auto » (vocabulaire unifié avec le dialogue d'ajout).
+    if cfg.get("post_processing") == "none":
+        cfg["post_processing"] = "auto"
     return cfg
 
 

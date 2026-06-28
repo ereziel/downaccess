@@ -8,6 +8,8 @@ FORMAT_AUTO       = "auto"
 FORMAT_MP4        = "mp4"
 FORMAT_MP3        = "mp3"
 FORMAT_M4A        = "m4a"
+FORMAT_AMC_VIDEO  = "amc_video"   # télécharge l'original (vidéo) puis ouvre dans AMC
+FORMAT_AMC_AUDIO  = "amc_audio"   # télécharge l'original (audio seul) puis ouvre dans AMC
 FORMAT_SUBS_ONLY  = "subtitles_only"
 FORMAT_MANUAL     = "manual"
 
@@ -18,6 +20,8 @@ _FORMAT_CODES = [
     FORMAT_MP4,
     FORMAT_MP3,
     FORMAT_M4A,
+    FORMAT_AMC_VIDEO,
+    FORMAT_AMC_AUDIO,
     FORMAT_SUBS_ONLY,
     FORMAT_MANUAL,
 ]
@@ -29,6 +33,8 @@ def _format_labels() -> list[str]:
         _("Vidéo MP4 (H.264)"),
         _("Audio MP3"),
         _("Audio M4A"),
+        _("Ouvrir avec Access Media Converter — vidéo"),
+        _("Ouvrir avec Access Media Converter — audio seul"),
         _("Sous-titres uniquement"),
         _("Choisir le format manuellement…"),
     ]
