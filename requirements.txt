@@ -1,0 +1,9 @@
+accessible-output2==0.17
+imageio-ffmpeg==0.6.0
+libloader==1.4.3
+platform_utils==1.6.2
+platformdirs==4.10.0
+pywin32==312
+types-wxpython==0.9.7
+wxPython==4.2.5
+yt-dlp==2026.6.9
