@@ -21,13 +21,13 @@ import re
 import subprocess
 import tempfile
 import threading
+import time
 import urllib.request
 import urllib.error
 import json
 
 from app.version import __version__
 from app.core import i18n
-from app.core.i18n import _translate as _
 
 GITHUB_API   = "https://api.github.com/repos/math65/downaccess/releases/latest"
 ASSET_NAME   = "DownAccess-Setup.exe"
@@ -193,6 +193,7 @@ def download_and_install(new_version: str, on_progress, on_error,
     def _run():
         tmp_path  = os.path.join(tempfile.gettempdir(), ASSET_NAME + ".tmp")
         dest_path = os.path.join(tempfile.gettempdir(), ASSET_NAME)
+        start_time = time.monotonic()
 
         # Nettoyer un éventuel résidu de téléchargement précédent
         for path in (tmp_path, dest_path):
@@ -222,7 +223,11 @@ def download_and_install(new_version: str, on_progress, on_error,
                         if total > 0:
                             pct = int(downloaded / total * 100)
                             if pct != last_pct:
-                                on_progress(pct)
+                                elapsed = max(time.monotonic() - start_time, 0.001)
+                                remaining = max(total - downloaded, 0)
+                                speed = downloaded / elapsed if downloaded > 0 else 0
+                                eta = int(remaining / speed) if speed > 0 else None
+                                on_progress(pct, downloaded, total, eta)
                                 last_pct = pct
 
         except Exception as exc:
